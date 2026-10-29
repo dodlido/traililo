@@ -165,6 +165,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
   const showRef = useRef<((p: maplibregl.LngLatLike, t: string, f: string, n?: string, url?: string, cat?: Cat) => void) | null>(null);
   const markerRef = useRef<{ marker: maplibregl.Marker; label: HTMLElement; el: HTMLElement } | null>(null);
   const pinsRef = useRef<maplibregl.Marker[]>([]);
+  const stayRef = useRef<{ key: string; el: HTMLElement }[]>([]);
+  const stayMarkers = useRef<maplibregl.Marker[]>([]);
   const crowd = useRef(0);
   const [ready, setReady] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -338,6 +340,49 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, segs, pins, pois]);
 
+
+  // ---------- where you sleep ----------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    stayMarkers.current.forEach((x) => x.remove());
+    stayMarkers.current = [];
+    stayRef.current = [];
+    const at = new Map<string, typeof trip.stays>();
+    for (const st of trip.stays) if (st.point) at.set(`${st.point.lat},${st.point.lon}`, [...(at.get(`${st.point.lat},${st.point.lon}`) ?? []), st]);
+    for (const [key, list] of at) {
+      const st = list[0];
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'pin stay';
+      el.style.setProperty('--c', CATS.stay.color);
+      el.setAttribute('aria-label', list.map((x) => x.name).join(', '));
+      const disc = document.createElement('span');
+      disc.className = 'disc';
+      disc.append(glyphSvg('stay'));
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = list.map((x) => x.name).join(' · ');
+      el.append(disc, lbl);
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const nights = (x: (typeof list)[number]) => `${x.nights} ${x.nights === 1 ? 'night' : 'nights'}, from ${new Date(x.checkIn + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`;
+        showRef.current?.(lngLat(st.point!), list.map((x) => x.name).join(' · '), list.map(nights).join(' · '), st.point!.approx ? 'Town-level position' : undefined, undefined, 'stay');
+      });
+      stayRef.current.push({ key, el });
+      stayMarkers.current.push(new maplibregl.Marker({ element: el, anchor: 'center', offset: [0, -26] }).setLngLat(lngLat(st.point!)).addTo(map));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, trip.stays]);
+
+  // tonight's bed is the one that is named
+  useEffect(() => {
+    const d = days[activeIdx];
+    const st = trip.stays.find((x) => x.id === d?.stayId);
+    const key = st?.point ? `${st.point.lat},${st.point.lon}` : '';
+    for (const s of stayRef.current) s.el.classList.toggle('tonight', s.key === key);
+  }, [ready, activeIdx, trip.stays, days]);
+
   // choose the basemap
   useEffect(() => {
     const map = mapRef.current;
@@ -483,7 +528,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
   }, [ready, activeIdx]);
 
   const noTiles = tiles.bad >= 3 && tiles.ok === 0;
-  const legendCats = (['hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
+  const legendCats = (['stay', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
   return (
     <div className="map">
       <div className="map-canvas" ref={box} role="application" aria-label="Route map of the trip, up to the day you are reading" />
