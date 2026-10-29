@@ -23,6 +23,8 @@ export interface TripSummary {
 }
 export interface Bundle {
   id: string;
+  version: number;
+  cover: string;
   title: string;
   owner: boolean;
   trip: Trip;
@@ -71,14 +73,14 @@ export async function listTrips(session: Session): Promise<{ trips: TripSummary[
 
 export async function loadTrip(session: Session, id: string): Promise<{ bundle: Bundle; offline: boolean }> {
   const uid = session.user.id;
-  const pub = await sb.from('trips').select('id,title,owner_id,data').eq('id', id).maybeSingle();
+  const pub = await sb.from('trips').select('id,title,owner_id,data,version,cover_region').eq('id', id).maybeSingle();
   if (pub.error || !pub.data) {
     const cached = cacheGet<Bundle>(uid, `trip:${id}`);
     if (cached) return { bundle: cached, offline: true };
     throw pub.error ?? new Error('Trip not found');
   }
   const d = pub.data.data as { trip: Trip; tracks: Tracks };
-  let bundle: Bundle = { id, title: pub.data.title, owner: false, trip: d.trip, tracks: d.tracks ?? {} };
+  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, trip: d.trip, tracks: d.tracks ?? {} };
   if (pub.data.owner_id === uid) {
     const priv = await sb.from('trip_private').select('data').eq('trip_id', id).maybeSingle();
     const p = priv.data?.data as { trip: Trip; report?: ImportReport; sources?: Bundle['sources'] } | undefined;
@@ -92,3 +94,40 @@ export async function shareTrip(tripId: string, email: string): Promise<string |
   const { error } = await sb.rpc('share_trip', { p_trip: tripId, p_email: email });
   return error ? error.message : null;
 }
+
+import { publicVersion } from './privacy.ts';
+import { computeTotals } from './totals.ts';
+
+/** Save the owner's version of a trip. Returns the new version number. Throws with a readable message on failure. */
+export async function saveTrip(b: Bundle, trip: Trip): Promise<number> {
+  const full = { ...trip, totals: computeTotals(trip) };
+  const { data, error } = await sb.rpc('save_trip', {
+    p_trip: b.id,
+    p_version: b.version,
+    p_title: b.title,
+    p_cover: b.cover,
+    p_start: full.startDate,
+    p_end: full.endDate,
+    p_public: { trip: publicVersion(full), tracks: b.tracks },
+    p_private: { trip: full, report: b.report, sources: b.sources },
+  });
+  if (error) throw new Error(error.message);
+  return data as number;
+}
+
+export async function createTrip(title: string, cover: string, trip: Trip): Promise<string> {
+  const full = { ...trip, totals: computeTotals(trip) };
+  const { data, error } = await sb.rpc('create_trip', {
+    p_title: title,
+    p_cover: cover,
+    p_start: full.startDate,
+    p_end: full.endDate,
+    p_public: { trip: publicVersion(full), tracks: {} },
+    p_private: { trip: full },
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+/** Set when a trip has just been created, so it opens ready for editing. */
+export const fresh = { id: '' };
