@@ -1,5 +1,5 @@
 // Offline support. The app itself is cached on first visit; map tiles you have looked at are kept too.
-const APP = 'traililo-app-v1';
+const APP = 'traililo-app-v2';
 const TILES = 'traililo-tiles-v1';
 const SHELL = ['./', './index.html', './app.js', './app.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const MAX_TILES = 900;
@@ -44,7 +44,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   // the app: network first so updates arrive, cache when offline
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((r) => {
         if (r.ok) caches.open(APP).then((c) => c.put(req, r.clone()));
         return r;
