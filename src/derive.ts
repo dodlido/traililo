@@ -1,0 +1,87 @@
+// Numbers and groupings the viewer needs, all computed from the imported trip.
+import type { Day, Entry, HikeEntry, Stay, Trip } from './model.ts';
+
+export interface DayHiking {
+  /** Planned (not optional) hiking distance that day. */
+  km: number;
+  /** Optional hikes with a distance, drawn as an outline on top. */
+  optionalKm: number;
+  /** At least one planned hike has no distance in the sheet. */
+  missing: boolean;
+  /** Distance came from the first of several route options. */
+  approx: boolean;
+}
+
+export function hikingFor(day: Day): DayHiking {
+  let km = 0;
+  let optionalKm = 0;
+  let missing = false;
+  let approx = false;
+  for (const e of day.entries) {
+    if (e.kind !== 'hike') continue;
+    const h = e as HikeEntry;
+    let d = h.distanceKm;
+    if (d === undefined && h.options?.length) {
+      d = h.options[0].distanceKm;
+      if (d !== undefined) approx = true;
+    }
+    if (h.optional) {
+      if (d !== undefined) optionalKm += d;
+    } else if (d === undefined) missing = true;
+    else km += d;
+  }
+  return { km, optionalKm, missing, approx };
+}
+
+export interface RegionRun {
+  region: string;
+  country?: string;
+  days: Day[];
+  start: number; // index of the first day in the trip
+}
+
+/** Consecutive days in the same region, in order. */
+export function regionRuns(trip: Trip): RegionRun[] {
+  const runs: RegionRun[] = [];
+  trip.days.forEach((d, i) => {
+    const last = runs[runs.length - 1];
+    if (last && last.region === d.region) last.days.push(d);
+    else runs.push({ region: d.region, country: d.country, days: [d], start: i });
+  });
+  return runs;
+}
+
+export function stayById(trip: Trip): Map<string, Stay> {
+  return new Map(trip.stays.map((s) => [s.id, s]));
+}
+
+const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', ...opts });
+const parse = (iso: string) => new Date(iso + 'T00:00:00Z');
+
+export const dayOfMonth = (iso: string) => String(parse(iso).getUTCDate());
+export const weekday = (iso: string) => fmt({ weekday: 'short' }).format(parse(iso));
+export const monthShort = (iso: string) => fmt({ month: 'short' }).format(parse(iso));
+export const longDate = (iso: string) => fmt({ day: 'numeric', month: 'short', year: 'numeric' }).format(parse(iso));
+export const shortDate = (iso: string) => fmt({ day: 'numeric', month: 'short' }).format(parse(iso));
+
+export function minutes(min?: number): string | undefined {
+  if (min === undefined) return undefined;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m}`;
+}
+
+export function nightOf(stay: Stay, date: string): string | undefined {
+  const idx = Math.round((parse(date).getTime() - parse(stay.checkIn).getTime()) / 86400000);
+  return stay.nights > 1 ? `night ${idx + 1} of ${stay.nights}` : undefined;
+}
+
+export const kindLabel: Record<Entry['kind'], string> = {
+  commute: 'Travel',
+  hike: 'Hike',
+  experience: 'Experience',
+  note: 'Note',
+};
+
+export const countryName: Record<string, string> = { AR: 'Argentina', CL: 'Chile' };
