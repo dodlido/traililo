@@ -320,3 +320,21 @@ ul, ol { list-style: none; }
 .map .pin.stay.tonight .lbl { display: none; }
 .map .pin svg { color: var(--night); stroke: var(--night); }
 .map .pin .disc svg path { stroke: var(--night); }
+
+/* ---------- today ---------- */
+.today-card { margin-bottom: 14px; display: flex; align-items: center; gap: 14px; width: calc(100% - 32px); margin: 14px 16px 0; padding: 14px 18px; text-align: left; font: inherit; color: var(--ice); background: var(--card); border: 1px solid var(--rule); border-radius: 18px; }
+.today-card.is-live { cursor: pointer; border-color: color-mix(in srgb, var(--amber) 60%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--amber) 16%, var(--card)), var(--card)); }
+.today-big { font-family: var(--display); font-weight: 800; font-size: 54px; line-height: 0.9; color: var(--amber); }
+.today-text { display: flex; flex-direction: column; font-size: 17px; font-weight: 600; line-height: 1.25; min-width: 0; flex: 1; }
+.today-text small { font-size: 13.5px; font-weight: 400; color: var(--fog); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-go { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: var(--night); background: var(--amber); padding: 8px 12px; border-radius: 999px; flex: none; }
+.today-pill { align-self: center; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--night); background: var(--amber); padding: 4px 9px; border-radius: 999px; }
+.day.is-today { border-top-color: var(--amber); }
+.now-badge { position: absolute; top: 12px; right: 12px; z-index: 3; font-size: 12px; font-weight: 800; color: var(--night); background: var(--amber); padding: 5px 10px; border-radius: 999px; }
+.photo-credit { position: absolute; right: 10px; bottom: 6px; z-index: 3; white-space: nowrap; font-size: 10.5px; color: rgba(255, 255, 255, 0.7); text-decoration: none; text-align: right; text-shadow: 0 0 4px rgba(0, 0, 0, 0.8); }
+.scene:has(.scene-photo.is-in)::after { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to top, rgba(11, 20, 24, 0.88) 0%, rgba(11, 20, 24, 0.35) 45%, rgba(11, 20, 24, 0.05) 100%); }
+
+.photo-credits { margin: 18px 16px 0; font-size: 13px; color: var(--fog); }
+.photo-credits summary { cursor: pointer; }
+.photo-credits ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.photo-credits a { color: var(--fog); }

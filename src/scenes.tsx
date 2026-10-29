@@ -1,5 +1,6 @@
 // Illustrated landscapes, one per place. Drawn in code from a seeded random generator, so they are always the same.
 // If you add a real photo at photos/<slug>.jpg next to index.html, it fades in over the drawing.
+import { PHOTOS, photoUrl } from './photos.ts';
 import { useId, useState, type ReactElement } from 'react';
 
 export type Kind = 'city' | 'peaks' | 'towers' | 'spire' | 'glacier' | 'lake' | 'fjord' | 'volcano' | 'sea' | 'jagged';
@@ -67,6 +68,8 @@ export function Scene({ region, theme, className = '', photo = true, seed }: { r
   const id = useId().replace(/:/g, '');
   const [hasPhoto, setHasPhoto] = useState(false);
   const r = rng(seed ?? region);
+  const own = PHOTOS[region];
+  const photoSrc = own ? photoUrl(own) : `photos/${slug(region)}.jpg`;
   const t = theme;
   const horizon = t.kind === 'sea' || t.kind === 'lake' || t.kind === 'fjord' ? 168 : 190;
   const parts: ReactElement[] = [];
@@ -157,7 +160,8 @@ export function Scene({ region, theme, className = '', photo = true, seed }: { r
       {photo && (
         <img
           className={hasPhoto ? 'scene-photo is-in' : 'scene-photo'}
-          src={`photos/${slug(region)}.jpg`}
+          src={photoSrc}
+          style={own ? { objectPosition: own.focus } : undefined}
           alt=""
           loading="lazy"
           onLoad={() => setHasPhoto(true)}

@@ -1,3 +1,5 @@
+import { whereIsToday, type Today } from './today.ts';
+import { PHOTOS, photoCredit, photoPage } from './photos.ts';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type Tracks } from './MapView.tsx';
@@ -27,6 +29,7 @@ interface TripData {
 const TripCtx = createContext<TripData>(null as unknown as TripData);
 const useT = () => useContext(TripCtx);
 const ShowCtx = createContext<(id: string) => void>(() => {});
+const TodayCtx = createContext<Today | null>(null);
 const km = (v: number) => `${Math.round(v * 10) / 10} km`;
 const PERSONAL_NOTE = /^Assumed:/i;
 
@@ -98,7 +101,9 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const shared = !bundle.owner || preview;
   const setShared = setPreview;
   const route = useMemo(() => parseSub(sub, runs.length), [sub, runs.length]);
-  const [active, setActive] = useState(trip.days[0].date);
+  const today = useMemo(() => whereIsToday(trip), [trip]);
+  const [active, setActive] = useState(() => (today.state === 'during' ? today.date : trip.days[0].date));
+  const pendingToday = useRef(false);
   const [focus, setFocus] = useState<Focus | null>(null);
   const desktop = useDesktop();
   const page = useRef<HTMLDivElement>(null);
@@ -113,8 +118,39 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   // new screen: back to the top; opening a chapter selects its first day
   useEffect(() => {
     page.current?.scrollTo({ top: 0 });
-    if (route.chapter !== null) setActive(runs[route.chapter].days[0].date);
+    if (route.chapter !== null) {
+      const run = runs[route.chapter];
+      if (pendingToday.current && run.days.some((d) => d.date === today.date || d === trip.days[today.idx])) {
+        pendingToday.current = false;
+        const date = trip.days[today.idx].date;
+        setActive(date);
+        window.setTimeout(() => document.getElementById(`day-${date}`)?.scrollIntoView({ block: 'start' }), 60);
+      } else setActive(run.days[0].date);
+    }
   }, [route.tab, route.chapter]);
+
+  const chapterOfToday = today.state === 'during' ? runs.findIndex((r) => r.days.some((d) => d.date === trip.days[today.idx].date)) : -1;
+  const openToday = () => {
+    if (chapterOfToday < 0) return;
+    pendingToday.current = true;
+    if (route.chapter === chapterOfToday) {
+      pendingToday.current = false;
+      const date = trip.days[today.idx].date;
+      setActive(date);
+      document.getElementById(`day-${date}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else go(`chapter/${chapterOfToday}`);
+  };
+  // opening the app on a day of the trip lands on that day
+  useEffect(() => {
+    if (today.state === 'during' && route.tab === 'journey' && route.chapter === null && sessionStorage.getItem('traililo:landed') !== bundle.id) {
+      try {
+        sessionStorage.setItem('traililo:landed', bundle.id);
+      } catch {
+        /* fine */
+      }
+      openToday();
+    }
+  }, []);
 
   // the day in the middle of the screen is the day the map shows
   useEffect(() => {
@@ -142,10 +178,11 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   return (
     <TripCtx.Provider value={data}>
     <ShowCtx.Provider value={showOnMap}>
+    <TodayCtx.Provider value={today}>
     <div className={`shell${shared ? ' is-shared' : ''}`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
         <div className="page" ref={page}>
-          {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} />}
+          {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} shared={shared} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
           {route.tab === 'stays' && <Stays shared={shared} go={go} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
@@ -193,6 +230,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
         />
       )}
     </div>
+    </TodayCtx.Provider>
     </ShowCtx.Provider>
     </TripCtx.Provider>
   );
@@ -207,8 +245,11 @@ function Tab({ icon, label, on, onClick }: { icon: string; label: string; on: bo
   );
 }
 
-function Journey({ shared, setShared, go, editing, setEditing }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void }) {
-  const { trip, runs, base, owner, title, openSheet } = useT();
+function Journey({ shared, setShared, go, editing, setEditing, openToday }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void; openToday: () => void }) {
+  const { trip, runs, base, owner, title, openSheet, staysById } = useT();
+  const today = useContext(TodayCtx)!;
+  const nowDay = trip.days[today.idx];
+  const nowStay = nowDay.stayId ? staysById.get(nowDay.stayId)?.name : undefined;
   const t = trip.totals;
   const countries = [...new Set(trip.days.map((d) => d.country).filter(Boolean))].map((c) => countryName[c as string]);
   return (
@@ -247,6 +288,8 @@ function Journey({ shared, setShared, go, editing, setEditing }: { shared: boole
         </div>
       </header>
 
+      <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
+
       <div className="strip" role="list" aria-label="The route, by place">
         {runs.map((run, i) => (
           <a key={i} role="listitem" href={`${base}/chapter/${i}`} style={{ flexGrow: run.days.length, background: themeFor(run.region).accent }} title={run.region} aria-label={run.region} />
@@ -260,6 +303,7 @@ function Journey({ shared, setShared, go, editing, setEditing }: { shared: boole
           kinds.delete('');
           return (
             <a className="chapter-card" key={i} href={`${base}/chapter/${i}`} style={{ ['--accent' as string]: th.accent }}>
+              {today.state === 'during' && run.days.some((d) => d.date === nowDay.date) && <span className="now-badge">Day {today.n} · now</span>}
               <Scene region={run.region} theme={th} />
               <div className="chapter-card-text">
                 <h2>{run.region}</h2>
@@ -273,6 +317,17 @@ function Journey({ shared, setShared, go, editing, setEditing }: { shared: boole
           );
         })}
       </section>
+
+      <details className="photo-credits">
+        <summary>Photo credits</summary>
+        <ul>
+          {runs.filter((r) => PHOTOS[r.region]).map((r) => (
+            <li key={r.region}>
+              {r.region}: <a href={photoPage(PHOTOS[r.region])} target="_blank" rel="noopener noreferrer">{PHOTOS[r.region].by}</a>, {PHOTOS[r.region].licence}, Wikimedia Commons
+            </li>
+          ))}
+        </ul>
+      </details>
 
       {owner && !shared && (
         <details className="notes-fold">
@@ -307,6 +362,11 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
           </p>
           <h1>{run.region}</h1>
         </div>
+        {PHOTOS[run.region] && (
+          <a className="photo-credit" href={photoPage(PHOTOS[run.region])} target="_blank" rel="noopener noreferrer">
+            {photoCredit(PHOTOS[run.region])}
+          </a>
+        )}
       </header>
       <ol className="days">
         {run.days.map((d) => (
@@ -381,6 +441,8 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
 
 function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: boolean }) {
   const { staysById, sheet, owner, editing, openSheet, mutate } = useT();
+  const today = useContext(TodayCtx)!;
+  const isToday = today.state === 'during' && trip_dayIs(today, day.date);
   const [newTodo, setNewTodo] = useState('');
   const canEdit = editing && !shared;
   const stay = day.stayId ? staysById.get(day.stayId) : undefined;
@@ -388,13 +450,14 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
   const todos = shared ? [] : day.todos.filter((td) => !shownWarnings.has(td.text));
   const nothing = day.entries.length === 0 && todos.length === 0;
   return (
-    <li className={active ? 'day is-active' : 'day'} id={`day-${day.date}`}>
+    <li className={`day${active ? ' is-active' : ''}${isToday ? ' is-today' : ''}`} id={`day-${day.date}`}>
       <div className="day-head">
         <span className="day-num">{dayOfMonth(day.date)}</span>
         <span className="day-when">
           {weekday(day.date)}
           <small>{monthShort(day.date)}</small>
         </span>
+        {isToday && <span className="today-pill">Today</span>}
         {canEdit && (
           <button type="button" className="round small edit-btn" aria-label="Edit this day" onClick={() => openSheet({ type: 'day', date: day.date })}>
             <Icon name="edit" size={16} />
@@ -694,5 +757,44 @@ function ImportNotes() {
         ))}
       </ul>
     </section>
+  );
+}
+
+/** Today's date, as a listed day (a gap day counts as the one before it). */
+function trip_dayIs(today: Today, date: string) {
+  return today.date === date;
+}
+
+function TodayCard({ today, start, where, onOpen }: { today: Today; start: string; where: string; onOpen: () => void }) {
+  if (today.state === 'before')
+    return (
+      <section className="today-card" aria-label="Countdown">
+        <b className="today-big">{today.daysTo === 1 ? 'Tomorrow' : today.daysTo}</b>
+        <span className="today-text">
+          {today.daysTo === 1 ? 'the trip begins' : 'days to go'}
+          <small>Starts {weekday(start)} {shortDate(start)}</small>
+        </span>
+      </section>
+    );
+  if (today.state === 'after')
+    return (
+      <section className="today-card" aria-label="Trip finished">
+        <span className="today-text">
+          Home again
+          <small>{today.daysSince === 0 ? 'The trip ended today' : `The trip ended ${today.daysSince} ${today.daysSince === 1 ? 'day' : 'days'} ago`}</small>
+        </span>
+      </section>
+    );
+  return (
+    <button type="button" className="today-card is-live" onClick={onOpen}>
+      <b className="today-big">{today.n}</b>
+      <span className="today-text">
+        Day {today.n} of {today.total}
+        <small>{where}</small>
+      </span>
+      <span className="today-go">
+        Today <Icon name="next" size={18} />
+      </span>
+    </button>
   );
 }
