@@ -1,5 +1,7 @@
 import { whereIsToday, type Today } from './today.ts';
 import { PHOTOS, photoCredit, photoPage } from './photos.ts';
+import { deletePhoto, photoUrlOf, uploadPhoto } from './backend.ts';
+import { shrink } from './image.ts';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type Tracks } from './MapView.tsx';
@@ -304,7 +306,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
           return (
             <a className="chapter-card" key={i} href={`${base}/chapter/${i}`} style={{ ['--accent' as string]: th.accent }}>
               {today.state === 'during' && run.days.some((d) => d.date === nowDay.date) && <span className="now-badge">Day {today.n} · now</span>}
-              <Scene region={run.region} theme={th} />
+              <Scene region={run.region} theme={th} src={trip.photos?.[run.region] ? photoUrlOf(trip.photos[run.region]) : undefined} />
               <div className="chapter-card-text">
                 <h2>{run.region}</h2>
                 <p>
@@ -321,7 +323,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
       <details className="photo-credits">
         <summary>Photo credits</summary>
         <ul>
-          {runs.filter((r) => PHOTOS[r.region]).map((r) => (
+          {runs.filter((r) => PHOTOS[r.region] && !trip.photos?.[r.region]).map((r) => (
             <li key={r.region}>
               {r.region}: <a href={photoPage(PHOTOS[r.region])} target="_blank" rel="noopener noreferrer">{PHOTOS[r.region].by}</a>, {PHOTOS[r.region].licence}, Wikimedia Commons
             </li>
@@ -340,13 +342,48 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
 }
 
 function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number; shared: boolean; active: string; go: (h: string) => void; showOnMap: () => void; desktop: boolean }) {
-  const { runs, base } = useT();
+  const { runs, base, trip, owner, editing, mutate } = useT();
   const run = runs[idx];
+  const mine = trip.photos?.[run.region];
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState('');
+  const canPhoto = owner && editing && !shared;
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setProblem('');
+    setBusy('Uploading…');
+    try {
+      const path = await uploadPhoto(await shrink(file), trip.id);
+      const old = mine;
+      await mutate((t) => {
+        (t.photos ??= {})[run.region] = path;
+      });
+      if (old) deletePhoto(old);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : 'Could not upload that picture');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const remove = async () => {
+    if (!mine) return;
+    setBusy('Removing…');
+    try {
+      await mutate((t) => {
+        if (t.photos) delete t.photos[run.region];
+      });
+      deletePhoto(mine);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : 'Could not remove it');
+    } finally {
+      setBusy(null);
+    }
+  };
   const th = themeFor(run.region);
   return (
     <div className="chapter" style={{ ['--accent' as string]: th.accent }}>
       <header className="chapter-hero">
-        <Scene region={run.region} theme={th} />
+        <Scene region={run.region} theme={th} src={mine ? photoUrlOf(mine) : undefined} />
         <button type="button" className="round back" aria-label="Back to the journey" onClick={() => go('')}>
           <Icon name="back" size={22} />
         </button>
@@ -362,7 +399,21 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
           </p>
           <h1>{run.region}</h1>
         </div>
-        {PHOTOS[run.region] && (
+        {canPhoto && (
+          <div className="photo-edit">
+            <label className="chip">
+              <Icon name="plus" size={16} /> {busy ?? (mine ? 'Change photo' : 'Add photo')}
+              <input type="file" accept="image/*" hidden disabled={!!busy} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            {mine && !busy && (
+              <button type="button" className="chip" onClick={() => void remove()}>
+                Remove
+              </button>
+            )}
+            {problem && <p className="photo-problem">{problem}</p>}
+          </div>
+        )}
+        {!mine && PHOTOS[run.region] && (
           <a className="photo-credit" href={photoPage(PHOTOS[run.region])} target="_blank" rel="noopener noreferrer">
             {photoCredit(PHOTOS[run.region])}
           </a>

@@ -1,7 +1,7 @@
 // Illustrated landscapes, one per place. Drawn in code from a seeded random generator, so they are always the same.
 // If you add a real photo at photos/<slug>.jpg next to index.html, it fades in over the drawing.
 import { PHOTOS, photoUrl } from './photos.ts';
-import { useId, useState, type ReactElement } from 'react';
+import { useEffect, useId, useState, type ReactElement } from 'react';
 
 export type Kind = 'city' | 'peaks' | 'towers' | 'spire' | 'glacier' | 'lake' | 'fjord' | 'volcano' | 'sea' | 'jagged';
 export interface Theme {
@@ -64,12 +64,18 @@ function ridge(r: () => number, base: number, amp: number, step: number, spiky: 
   return `M0 ${H} L` + pts.map(([x, yy]) => `${x.toFixed(1)} ${yy.toFixed(1)}`).join(' L') + ` L${W} ${H} Z`;
 }
 
-export function Scene({ region, theme, className = '', photo = true, seed }: { region: string; theme: Theme; className?: string; photo?: boolean; seed?: string }) {
+export function Scene({ region, theme, className = '', photo = true, seed, src }: { region: string; theme: Theme; className?: string; photo?: boolean; seed?: string; src?: string }) {
   const id = useId().replace(/:/g, '');
   const [hasPhoto, setHasPhoto] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // a different picture starts from the drawing again
+  useEffect(() => {
+    setHasPhoto(false);
+    setFailed(false);
+  }, [src]);
   const r = rng(seed ?? region);
-  const own = PHOTOS[region];
-  const photoSrc = own ? photoUrl(own) : `photos/${slug(region)}.jpg`;
+  const own = src ? undefined : PHOTOS[region];
+  const photoSrc = src ?? (own ? photoUrl(own) : `photos/${slug(region)}.jpg`);
   const t = theme;
   const horizon = t.kind === 'sea' || t.kind === 'lake' || t.kind === 'fjord' ? 168 : 190;
   const parts: ReactElement[] = [];
@@ -157,7 +163,7 @@ export function Scene({ region, theme, className = '', photo = true, seed }: { r
         <rect width={W} height={H} fill={`url(#s${id})`} />
         {parts}
       </svg>
-      {photo && (
+      {photo && !failed && (
         <img
           className={hasPhoto ? 'scene-photo is-in' : 'scene-photo'}
           src={photoSrc}
@@ -165,7 +171,7 @@ export function Scene({ region, theme, className = '', photo = true, seed }: { r
           alt=""
           loading="lazy"
           onLoad={() => setHasPhoto(true)}
-          onError={(e) => e.currentTarget.remove()}
+          onError={() => setFailed(true)}
         />
       )}
     </div>

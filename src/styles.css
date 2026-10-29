@@ -338,3 +338,7 @@ ul, ol { list-style: none; }
 .photo-credits summary { cursor: pointer; }
 .photo-credits ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .photo-credits a { color: var(--fog); }
+
+.photo-edit { position: absolute; left: 20px; top: 70px; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 40px); }
+.photo-problem { flex-basis: 100%; margin: 0; font-size: 13px; color: #ffb4a8; text-shadow: 0 0 4px #000; }
+.chapter-hero > .photo-edit, .chapter-hero > .photo-credit { position: absolute; }
