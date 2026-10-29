@@ -1,0 +1,4 @@
+node_modules
+dist
+# private trip data stays on the owner's machine
+data/patagonia.*
