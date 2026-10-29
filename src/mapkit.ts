@@ -1,9 +1,10 @@
 // Look of the map's places: one colour and one small drawing per kind of place.
 import type { Entry, PoiCat } from './model.ts';
 
-export type Cat = PoiCat | 'hike';
+export type Cat = PoiCat | 'hike' | 'stay';
 
 export const CATS: Record<Cat, { label: string; color: string; glyph: string; fill?: boolean }> = {
+  stay: { label: 'Where you sleep', color: '#d6a8ff', glyph: 'M3 19V6m0 8h18v5M21 14v-2.5A2.5 2.5 0 0 0 18.5 9H11v5M7 11.5h.01' },
   hike: { label: 'Hike', color: '#f2b24b', fill: true, glyph: 'M2.5 19 9 8l4 6.2 2.3-3.4L21.5 19z' },
   view: { label: 'Viewpoint', color: '#7fd6c2', glyph: 'M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12zM12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z' },
   lake: { label: 'Lake', color: '#5cb8ff', glyph: 'M3 8.5c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19.5c3-3 6 3 9 0s6 3 9 0' },
