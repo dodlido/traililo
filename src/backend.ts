@@ -131,3 +131,21 @@ export async function createTrip(title: string, cover: string, trip: Trip): Prom
 
 /** Set when a trip has just been created, so it opens ready for editing. */
 export const fresh = { id: '' };
+
+// ---------- photos you upload ----------
+/** Where an uploaded photo can be read from. */
+export const photoUrlOf = (path: string) => `${SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
+
+export async function uploadPhoto(blob: Blob, tripId: string): Promise<string> {
+  const { data } = await sb.auth.getSession();
+  const uid = data.session?.user.id;
+  if (!uid) throw new Error('Sign in again to upload');
+  const path = `${uid}/${tripId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await sb.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+  if (error) throw new Error(/not found|bucket/i.test(error.message) ? 'Photo storage is not set up yet (run migration-3.sql)' : error.message);
+  return path;
+}
+
+export async function deletePhoto(path: string): Promise<void> {
+  await sb.storage.from('photos').remove([path]).catch(() => {});
+}

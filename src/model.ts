@@ -191,6 +191,8 @@ export interface Trip {
   endDate: string;
   days: Day[];
   stays: Stay[];
+  /** Your own photos by place name: the storage path of each. */
+  photos?: Record<string, string>;
   pois?: Poi[];
   lines?: RouteLine[];
   totals: TripTotals;
