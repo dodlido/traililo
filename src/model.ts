@@ -23,7 +23,7 @@ export interface Link {
 export type BookingSource = 'airbnb' | 'getyourguide' | 'unspecified';
 
 export interface BookingInfo {
-  bookedBy?: string; 
+  bookedBy?: string; // a first name
   source: BookingSource;
   confirmationCode?: string; // to be filled in later
 }
@@ -155,6 +155,35 @@ export interface TripTotals {
   openTodos: number;
 }
 
+export type PoiCat = 'view' | 'lake' | 'waterfall' | 'water' | 'thermal' | 'bike' | 'transport' | 'car' | 'town' | 'sight';
+
+/** An extra place worth knowing about on the map: a viewpoint, a stop, a dock. Not a planned activity. */
+export interface Poi {
+  id: string;
+  name: string;
+  cat: PoiCat;
+  point: Point;
+  /** Which part of the trip it belongs to, for example "Seven Lakes Route". */
+  group: string;
+  /** The day it belongs to. Without one it is shown on the map but not tied to a day. */
+  date?: string;
+  note?: string;
+  url?: string;
+  /** A short mark on the pin, for example the lake number. */
+  badge?: string;
+}
+
+/** A drawn route that the straight line between two nights cannot describe. */
+export interface RouteLine {
+  id: string;
+  name: string;
+  date: string;
+  mode: 'drive' | 'ferry' | 'trek' | 'scenic';
+  points: Point[];
+  /** Replaces the plain line between that day's two overnight places. */
+  replace?: boolean;
+}
+
 export interface Trip {
   id: string;
   title: string;
@@ -162,6 +191,8 @@ export interface Trip {
   endDate: string;
   days: Day[];
   stays: Stay[];
+  pois?: Poi[];
+  lines?: RouteLine[];
   totals: TripTotals;
 }
 

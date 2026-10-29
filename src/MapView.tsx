@@ -6,7 +6,8 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerSource from 'worker-text';
 import type { Feature, FeatureCollection, LineString, MultiLineString, Point as GeoPoint } from 'geojson';
-import type { CommuteEntry, Day, Entry, HikeEntry, Point, Trip } from './model.ts';
+import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
+import { CATS, catOfEntry, glyphSvg, type Cat } from './mapkit.ts';
 import { minutes } from './derive.ts';
 
 export type Tracks = Record<string, { lines: number[][][]; km: number; name: string }>;
@@ -39,29 +40,34 @@ const FOG = '#8aa0a4';
 const BERRY = '#9a8cf0';
 const NIGHT = '#0b1418';
 const AMBER = '#e6bd6e';
+const CORAL = '#ff9a7a';
+const MINT = '#7fd6c2';
 
-type Mode = 'flight' | 'ferry' | 'drive' | 'trek';
-interface Seg { from: Point; to: Point; mode: Mode; day: number }
+type Mode = 'flight' | 'ferry' | 'drive' | 'trek' | 'scenic';
+interface Seg { pts: Point[]; mode: Mode; day: number; name?: string }
 
 const lngLat = (p: Point): [number, number] => [p.lon, p.lat];
 const same = (a: Point, b: Point) => a.lat === b.lat && a.lon === b.lon;
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function segmentsOf(days: Day[]): Seg[] {
+function segmentsOf(trip: Trip): Seg[] {
+  const days = trip.days;
   const segs: Seg[] = [];
   days.forEach((d, i) => {
-    if (i === 0 || !d.point) return;
+    const mine = (trip.lines ?? []).filter((l) => l.date === d.date);
+    for (const l of mine) segs.push({ pts: l.points, mode: l.mode, day: i, name: l.name });
+    if (i === 0 || !d.point || mine.some((l) => l.replace)) return;
     const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
     const legs = commute?.legs ?? [];
     if (legs.length > 1 && legs.every((l) => l.fromPoint && l.toPoint)) {
-      for (const l of legs) segs.push({ from: l.fromPoint!, to: l.toPoint!, mode: l.mode === 'ferry' ? 'ferry' : 'drive', day: i });
+      for (const l of legs) segs.push({ pts: [l.fromPoint!, l.toPoint!], mode: l.mode === 'ferry' ? 'ferry' : 'drive', day: i });
       return;
     }
     const prev = days[i - 1].point;
     if (!prev || same(prev, d.point)) return;
     const m = legs[0]?.mode;
     const mode: Mode = m === 'flight' ? 'flight' : m === 'ferry' ? 'ferry' : m ? 'drive' : d.entries.some((e) => e.kind === 'hike') ? 'trek' : 'drive';
-    segs.push({ from: prev, to: d.point, mode, day: i });
+    segs.push({ pts: [prev, d.point], mode, day: i });
   });
   return segs;
 }
@@ -86,8 +92,8 @@ function routeData(segs: Seg[]): FeatureCollection<LineString> {
     type: 'FeatureCollection',
     features: segs.map((s) => ({
       type: 'Feature',
-      properties: { day: s.day, mode: s.mode },
-      geometry: { type: 'LineString', coordinates: s.mode === 'flight' ? arc(s.from, s.to) : [lngLat(s.from), lngLat(s.to)] },
+      properties: { day: s.day, mode: s.mode, name: s.name ?? '' },
+      geometry: { type: 'LineString', coordinates: s.mode === 'flight' ? arc(s.pts[0], s.pts[s.pts.length - 1]) : s.pts.map(lngLat) },
     })),
   };
 }
@@ -112,44 +118,65 @@ function focusPoints(days: Day[], idx: number): Point[] {
   return pts;
 }
 
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const att = 'Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors';
+const ras = (path: string, maxzoom = 16) => ({ type: 'raster' as const, tiles: [`${ESRI}/${path}/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom, attribution: att });
+export type Base = 'dark' | 'terrain' | 'satellite';
+const BASES: { id: Base; label: string; layers: string[] }[] = [
+  { id: 'dark', label: 'Dark', layers: ['dark', 'dark-labels'] },
+  { id: 'terrain', label: 'Terrain', layers: ['terrain'] },
+  { id: 'satellite', label: 'Satellite', layers: ['sat', 'sat-labels'] },
+];
 const STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
-    carto: {
-      type: 'raster',
-      tiles: [`${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`],
-      tileSize: 256,
-      maxzoom: 16,
-      attribution: 'Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors',
-    },
-    labels: {
-      type: 'raster',
-      tiles: [`${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
-      tileSize: 256,
-      maxzoom: 16,
-    },
+    carto: ras('Canvas/World_Dark_Gray_Base'),
+    labels: ras('Canvas/World_Dark_Gray_Reference'),
+    terrain: ras('World_Topo_Map', 17),
+    sat: ras('World_Imagery', 17),
+    satlabels: ras('Reference/World_Boundaries_and_Places', 17),
   },
   layers: [
     { id: 'bg', type: 'background', paint: { 'background-color': '#111d22' } },
-    { id: 'basemap', type: 'raster', source: 'carto' },
-    { id: 'basemap-labels', type: 'raster', source: 'labels' },
+    { id: 'dark', type: 'raster', source: 'carto' },
+    { id: 'dark-labels', type: 'raster', source: 'labels' },
+    { id: 'terrain', type: 'raster', source: 'terrain', layout: { visibility: 'none' }, paint: { 'raster-saturation': -0.15, 'raster-brightness-max': 0.92 } },
+    { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' }, paint: { 'raster-brightness-max': 0.85 } },
+    { id: 'sat-labels', type: 'raster', source: 'satlabels', layout: { visibility: 'none' } },
   ],
 };
+
+const storedBase = (): Base => {
+  try {
+    const v = localStorage.getItem('traililo:base');
+    if (v === 'terrain' || v === 'satellite' || v === 'dark') return v;
+  } catch {
+    /* no storage */
+  }
+  return 'dark';
+};
+
+const dotColor: maplibregl.ExpressionSpecification = ['match', ['get', 'cat'], ...Object.entries(CATS).flatMap(([k, v]) => [k, v.color]), '#ffffff'] as unknown as maplibregl.ExpressionSpecification;
 
 export function MapView({ trip, active, labelFor, visible, tracks, focus }: { trip: Trip; active: string; labelFor: (d: Day) => string; visible: boolean; tracks: Tracks; focus: Focus | null }) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
-  const showRef = useRef<((p: maplibregl.LngLatLike, t: string, f: string, n?: string) => void) | null>(null);
+  const showRef = useRef<((p: maplibregl.LngLatLike, t: string, f: string, n?: string, url?: string, cat?: Cat) => void) | null>(null);
   const markerRef = useRef<{ marker: maplibregl.Marker; label: HTMLElement; el: HTMLElement } | null>(null);
+  const pinsRef = useRef<maplibregl.Marker[]>([]);
+  const crowd = useRef(0);
   const [ready, setReady] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [tiles, setTiles] = useState({ ok: 0, bad: 0 });
+  const [base, setBase] = useState<Base>(storedBase);
+  const [legend, setLegend] = useState(false);
+  const [dayCats, setDayCats] = useState<Cat[]>([]);
 
   const days = trip.days;
+  const pois = trip.pois ?? [];
   const activeIdx = Math.max(0, days.findIndex((d) => d.date === active));
-  const segs = useMemo(() => segmentsOf(days), [days]);
+  const segs = useMemo(() => segmentsOf(trip), [trip]);
   const pins = useMemo(() => {
     const m = new Map<string, { p: Point; first: number }>();
     days.forEach((d, i) => {
@@ -157,6 +184,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     });
     return [...m.values()];
   }, [days]);
+  const dots = (list: Poi[]) => pointsData(list.map((x) => ({ p: x.point, props: { id: x.id, cat: x.cat, name: x.name, date: x.date ?? '', note: x.note ?? '', url: x.url ?? '' } })));
 
   // ---------- create the map once ----------
   useEffect(() => {
@@ -167,7 +195,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
       center: [-70, -46],
       zoom: 4,
       minZoom: 2.5,
-      maxZoom: 16,
+      maxZoom: 17,
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
@@ -179,59 +207,91 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     map.on('load', () => {
       map.addSource('route', { type: 'geojson', data: routeData(segs) });
       map.addSource('pins', { type: 'geojson', data: pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))) });
-      map.addSource('sites', { type: 'geojson', data: pointsData([]) });
+      map.addSource('poidots', { type: 'geojson', data: dots(pois) });
       map.addSource('trail', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'route-later', type: 'line', source: 'route', paint: { 'line-color': FOG, 'line-width': 1.5, 'line-opacity': 0.5, 'line-dasharray': [1, 2.5] } });
+      const round = { 'line-cap': 'round', 'line-join': 'round' } as const;
+      map.addLayer({ id: 'route-later', type: 'line', source: 'route', paint: { 'line-color': FOG, 'line-width': 1.5, 'line-opacity': 0.55, 'line-dasharray': [1, 2.5] } });
+      map.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: round, paint: { 'line-color': NIGHT, 'line-width': ['match', ['get', 'mode'], 'trek', 7, 6], 'line-opacity': 0.55, 'line-blur': 1.5 } });
       map.addLayer({
         id: 'route-done',
         type: 'line',
         source: 'route',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        layout: round,
         paint: {
-          'line-color': ['match', ['get', 'mode'], 'ferry', BERRY, ICE],
-          'line-width': ['match', ['get', 'mode'], 'trek', 3.6, 2.6],
+          'line-color': ['match', ['get', 'mode'], 'ferry', BERRY, 'trek', CORAL, 'scenic', MINT, ICE],
+          'line-width': ['match', ['get', 'mode'], 'trek', 3.8, 'scenic', 3.4, 2.8],
+          'line-dasharray': ['match', ['get', 'mode'], 'scenic', ['literal', [2.2, 1.4]], ['literal', [1, 0]]],
         },
       });
       map.addLayer({ id: 'route-flight', type: 'line', source: 'route', paint: { 'line-color': BERRY, 'line-width': 2.2, 'line-dasharray': [2, 2] } });
       map.addLayer({ id: 'pins-later', type: 'circle', source: 'pins', paint: { 'circle-radius': 4.5, 'circle-color': NIGHT, 'circle-stroke-color': FOG, 'circle-stroke-width': 1.5 } });
       map.addLayer({ id: 'pins-done', type: 'circle', source: 'pins', paint: { 'circle-radius': 4.5, 'circle-color': ICE, 'circle-stroke-color': NIGHT, 'circle-stroke-width': 1.5 } });
-      map.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': NIGHT, 'line-width': 7, 'line-opacity': 0.75 } });
-      map.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': AMBER, 'line-width': 3.6 } });
-      map.addLayer({ id: 'sites', type: 'circle', source: 'sites', paint: { 'circle-radius': 7, 'circle-color': AMBER, 'circle-stroke-color': NIGHT, 'circle-stroke-width': 2 } });
+      map.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: round, paint: { 'line-color': NIGHT, 'line-width': 8, 'line-opacity': 0.7, 'line-blur': 1 } });
+      map.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: round, paint: { 'line-color': AMBER, 'line-width': 3.8 } });
+      map.addLayer({
+        id: 'poi-dots',
+        type: 'circle',
+        source: 'poidots',
+        minzoom: 6,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 3, 12, 6],
+          'circle-color': dotColor,
+          'circle-stroke-color': NIGHT,
+          'circle-stroke-width': 1.6,
+          'circle-opacity': 0.9,
+        },
+      });
 
-      // tapping a place or a trail opens its name and numbers
-      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px', offset: 12, className: 'tl-popup' });
+      // tapping a place or a trail opens its name and details
+      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '280px', offset: 14, className: 'tl-popup' });
       popupRef.current = popup;
-      const show = (lngLat: maplibregl.LngLatLike, title: string, facts: string, note?: string) => {
-        const box = document.createElement('div');
+      const show = (lngLat: maplibregl.LngLatLike, title: string, facts: string, note?: string, url?: string, cat?: Cat) => {
+        const el = document.createElement('div');
+        if (cat) {
+          const k = document.createElement('em');
+          k.textContent = CATS[cat].label;
+          k.style.color = CATS[cat].color;
+          el.append(k);
+        }
         const h = document.createElement('b');
         h.textContent = title;
-        box.append(h);
+        el.append(h);
         if (facts) {
           const f = document.createElement('p');
           f.textContent = facts;
-          box.append(f);
+          el.append(f);
         }
         if (note) {
           const n = document.createElement('small');
           n.textContent = note;
-          box.append(n);
+          el.append(n);
         }
-        popup.setLngLat(lngLat).setDOMContent(box).addTo(map);
+        if (url) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = /alltrails/.test(url) ? 'Open on AllTrails' : 'Open page';
+          el.append(a);
+        }
+        popup.setLngLat(lngLat).setDOMContent(el).addTo(map);
       };
       showRef.current = show;
-      for (const layer of ['sites', 'trail-line']) {
+      for (const layer of ['poi-dots', 'trail-line']) {
         map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
         map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
       }
-      map.on('click', 'sites', (ev) => {
+      map.on('click', 'poi-dots', (ev) => {
         const f = ev.features?.[0];
-        if (f) show(ev.lngLat, String(f.properties?.title ?? ''), String(f.properties?.facts ?? ''), f.properties?.hasTrack ? 'Trail drawn from OpenStreetMap' : 'Approximate spot');
+        if (!f) return;
+        const pr = f.properties ?? {};
+        const g = f.geometry as GeoPoint;
+        show(g.coordinates as [number, number], String(pr.name), '', pr.note ? String(pr.note) : undefined, pr.url ? String(pr.url) : undefined, pr.cat as Cat);
       });
       map.on('click', 'trail-line', (ev) => {
-        if (map.queryRenderedFeatures(ev.point, { layers: ['sites'] }).length) return;
+        if (map.queryRenderedFeatures(ev.point, { layers: ['poi-dots'] }).length) return;
         const f = ev.features?.[0];
-        if (f) show(ev.lngLat, String(f.properties?.title ?? 'Trail'), String(f.properties?.facts ?? ''), 'Trail drawn from OpenStreetMap');
+        if (f) show(ev.lngLat, String(f.properties?.title ?? 'Trail'), String(f.properties?.facts ?? ''), 'Trail drawn from OpenStreetMap', undefined, 'hike');
       });
 
       const el = document.createElement('div');
@@ -239,6 +299,13 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
       el.innerHTML = '<span class="ring"></span><span class="dot"></span><span class="label"></span>';
       const marker = new maplibregl.Marker({ element: el }).setLngLat([-70, -46]).addTo(map);
       markerRef.current = { marker, label: el.querySelector('.label') as HTMLElement, el };
+
+      const labels = () => {
+        const z = map.getZoom();
+        map.getContainer().classList.toggle('show-labels', z >= 10.6 || (z >= 8.2 && crowd.current <= 8));
+      };
+      map.on('zoom', labels);
+      labels();
       setReady(true);
     });
 
@@ -250,6 +317,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     });
 
     return () => {
+      pinsRef.current.forEach((m) => m.remove());
+      pinsRef.current = [];
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
@@ -265,7 +334,23 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     if (!ready || !map) return;
     (map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(routeData(segs));
     (map.getSource('pins') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))));
-  }, [ready, segs, pins]);
+    (map.getSource('poidots') as maplibregl.GeoJSONSource | undefined)?.setData(dots(pois));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, segs, pins, pois]);
+
+  // choose the basemap
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const on = new Set(BASES.find((b) => b.id === base)!.layers);
+    for (const b of BASES) for (const id of b.layers) map.setLayoutProperty(id, 'visibility', on.has(id) ? 'visible' : 'none');
+    map.getContainer().dataset.base = base;
+    try {
+      localStorage.setItem('traililo:base', base);
+    } catch {
+      /* fine without it */
+    }
+  }, [ready, base]);
 
   // reading a different day ends "whole trip" mode
   useEffect(() => setShowAll(false), [active]);
@@ -279,16 +364,51 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     const day = days[activeIdx];
 
     map.setFilter('route-later', ['>', ['get', 'day'], activeIdx]);
+    map.setFilter('route-casing', ['all', ['<=', ['get', 'day'], activeIdx], ['!=', ['get', 'mode'], 'flight']]);
     map.setFilter('route-done', ['all', ['<=', ['get', 'day'], activeIdx], ['!=', ['get', 'mode'], 'flight']]);
     map.setFilter('route-flight', ['all', ['<=', ['get', 'day'], activeIdx], ['==', ['get', 'mode'], 'flight']]);
     map.setFilter('pins-later', ['>', ['get', 'first'], activeIdx]);
     map.setFilter('pins-done', ['<=', ['get', 'first'], activeIdx]);
+    // the day's own places are drawn as pins, so the small dots keep to the other days
+    map.setFilter('poi-dots', showAll ? null : ['!=', ['get', 'date'], day.date]);
     popupRef.current?.remove();
-    const mapped = day.entries.filter((e) => e.at || tracks[e.id]);
-    const startOf = (e: Entry): Point => (tracks[e.id] ? { lon: tracks[e.id].lines[0][0][0], lat: tracks[e.id].lines[0][0][1] } : e.at!);
-    (map.getSource('sites') as maplibregl.GeoJSONSource).setData(
-      pointsData(mapped.map((e) => ({ p: e.at ?? startOf(e), props: { title: e.title, facts: factsOf(e), hasTrack: !!tracks[e.id] } }))),
-    );
+
+    // ----- pins with names for what happens today -----
+    pinsRef.current.forEach((x) => x.remove());
+    pinsRef.current = [];
+    const startOf = (e: Entry): Point | undefined => (tracks[e.id] ? { lon: tracks[e.id].lines[0][0][0], lat: tracks[e.id].lines[0][0][1] } : e.at);
+    interface Item { p: Point; cat: Cat; name: string; facts: string; note?: string; url?: string; badge?: string }
+    const items: Item[] = [];
+    for (const e of day.entries) {
+      const p = startOf(e);
+      if (!p || e.kind === 'commute') continue;
+      items.push({ p, cat: catOfEntry(e), name: e.title, facts: factsOf(e), note: tracks[e.id] ? 'Trail drawn from OpenStreetMap' : e.at?.approx ? 'Approximate spot' : undefined });
+    }
+    for (const x of pois.filter((q) => q.date === day.date)) items.push({ p: x.point, cat: x.cat, name: x.name, facts: '', note: x.note, url: x.url, badge: x.badge });
+    items.forEach((it, n) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'pin';
+      el.style.setProperty('--c', CATS[it.cat].color);
+      el.setAttribute('aria-label', it.name);
+      const disc = document.createElement('span');
+      disc.className = 'disc';
+      if (it.badge) disc.textContent = it.badge;
+      else disc.append(glyphSvg(it.cat));
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = it.name;
+      el.append(disc, lbl);
+      el.style.zIndex = String(10 + n);
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        showRef.current?.(lngLat(it.p), it.name, it.facts, it.note, it.url, it.cat);
+      });
+      pinsRef.current.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat(it.p)).addTo(map));
+    });
+    setDayCats([...new Set(items.map((i) => i.cat))]);
+    crowd.current = items.length;
+
     (map.getSource('trail') as maplibregl.GeoJSONSource).setData({
       type: 'FeatureCollection',
       features: day.entries.filter((e) => tracks[e.id]).map<Feature<MultiLineString>>((e) => ({
@@ -313,12 +433,18 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     if (showAll) {
       fit(days.map((d) => d.point).filter((p): p is Point => !!p), 7, { top: 70, bottom: 56, left: 56, right: 56 });
     } else {
-      const pts = focusPoints(days, activeIdx);
+      // a day full of stops is framed by the stops, not by where the night ends
+      const pts = items.length >= 3 ? [] : focusPoints(days, activeIdx);
+      // stations and rental desks far from the walking do not stretch the frame
+      for (const it of items) if (items.length < 3 || (it.cat !== 'transport' && it.cat !== 'car')) pts.push(it.p);
+      if (items.length < 3) for (const l of trip.lines ?? []) if (l.date === day.date) pts.push(...l.points);
       for (const e of day.entries) for (const l of tracks[e.id]?.lines ?? []) for (const [x, y] of l) pts.push({ lon: x, lat: y });
+      map.fire('zoom');
       if (pts.length <= 1 && pts[0]) map.easeTo({ center: lngLat(pts[0]), zoom: 9.2, duration });
       else fit(pts, 10.5);
     }
-  }, [ready, activeIdx, showAll, days, labelFor, visible, tracks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, activeIdx, showAll, days, pois, labelFor, visible, tracks]);
 
   // tapping an activity in the list: zoom to it and open its card
   useEffect(() => {
@@ -332,8 +458,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     else if (e.at) b.extend(lngLat(e.at));
     else return;
     map.fitBounds(b, { padding: { top: 80, bottom: 120, left: 50, right: 50 }, maxZoom: 14, duration: reduced() ? 0 : 900 });
-    const at = e.at ?? (tr ? { lon: tr.lines[0][0][0], lat: tr.lines[0][0][1] } : undefined);
-    if (at) showRef.current?.(lngLat(at), e.title, factsOf(e), tr ? 'Trail drawn from OpenStreetMap' : 'Approximate spot');
+    const at = tr ? { lon: tr.lines[0][0][0], lat: tr.lines[0][0][1] } : e.at;
+    if (at) showRef.current?.(lngLat(at), e.title, factsOf(e), tr ? 'Trail drawn from OpenStreetMap' : 'Approximate spot', undefined, catOfEntry(e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.n, ready, visible]);
 
@@ -357,6 +483,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
   }, [ready, activeIdx]);
 
   const noTiles = tiles.bad >= 3 && tiles.ok === 0;
+  const legendCats = (['hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
   return (
     <div className="map">
       <div className="map-canvas" ref={box} role="application" aria-label="Route map of the trip, up to the day you are reading" />
@@ -371,6 +498,28 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
           −
         </button>
       </div>
+      <div className="map-base" role="group" aria-label="Map style">
+        {BASES.map((b) => (
+          <button key={b.id} type="button" aria-pressed={base === b.id} onClick={() => setBase(b.id)}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+      {legendCats.length > 0 && (
+        <div className="map-legend" data-open={legend}>
+          <button type="button" onClick={() => setLegend((v) => !v)} aria-expanded={legend}>
+            {legend ? 'Hide key' : 'Key'}
+          </button>
+          <ul>
+            {legendCats.map((c) => (
+              <li key={c} style={{ ['--c' as string]: CATS[c].color }}>
+                <i />
+                {CATS[c].label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {noTiles && <p className="map-note">Basemap tiles need a connection. Your route is drawn either way.</p>}
     </div>
   );
