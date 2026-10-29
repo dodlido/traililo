@@ -1,7 +1,8 @@
 // Trailbook data model. Plain types only, so it runs in Node and in the future React app.
 // Dates are ISO strings (YYYY-MM-DD). Distances in km, elevation in metres, durations in minutes.
 
-export type Country = 'AR' | 'CL';
+/** Two-letter country code, for example AR or CL. */
+export type Country = string;
 
 export type LinkType = 'alltrails' | 'mapsme' | 'getyourguide' | 'airbnb' | 'booking' | 'other';
 
@@ -54,6 +55,8 @@ interface EntryBase {
   at?: Point;
   /** Filled in by the importer to close a gap in the sheet (not something you planned). */
   assumed?: boolean;
+  /** Notes only the owner sees. Never part of the friends' version. */
+  privateNotes?: string[];
 }
 
 export interface CommuteEntry extends EntryBase {

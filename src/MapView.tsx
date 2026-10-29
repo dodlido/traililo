@@ -259,6 +259,14 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // edits that move places change the drawn route
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    (map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(routeData(segs));
+    (map.getSource('pins') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))));
+  }, [ready, segs, pins]);
+
   // reading a different day ends "whole trip" mode
   useEffect(() => setShowAll(false), [active]);
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { listTrips, shareTrip, type TripSummary } from './backend.ts';
+import { createTrip, fresh, listTrips, shareTrip, type TripSummary } from './backend.ts';
+import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
-import { Scene, themeFor } from './scenes.tsx';
+import { THEMES, Scene, themeFor } from './scenes.tsx';
 import { shortDate } from './derive.ts';
 
 export function Home({ session, signOut }: { session: Session; signOut: () => void }) {
@@ -28,6 +29,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
       {offline && <p className="offline-note">You’re offline. Showing what’s saved on this phone.</p>}
       {error && <p className="auth-error">{error}</p>}
       {trips && trips.length === 0 && <p className="auth-note">No trips yet. Trips you’re invited to will show up here.</p>}
+      <NewTrip />
       <ul className="trip-list">
         {trips?.map((t) => (
           <TripCard key={t.id} t={t} />
@@ -71,5 +73,57 @@ function TripCard({ t }: { t: TripSummary }) {
         </div>
       )}
     </li>
+  );
+}
+
+function NewTrip() {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [cover, setCover] = useState('Torres del Paine');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim() || !start || !end) return setErr('Fill in a name and both dates.');
+    if (end < start) return setErr('The end date is before the start.');
+    const dates: string[] = [];
+    for (let d = new Date(start + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= end && dates.length < 150; d.setUTCDate(d.getUTCDate() + 1)) dates.push(d.toISOString().slice(0, 10));
+    const days: Day[] = dates.map((date) => ({ date, region: title.trim(), entries: [], todos: [] }));
+    const trip = { id: crypto.randomUUID(), title: title.trim(), startDate: start, endDate: end, days, stays: [] } as unknown as Trip;
+    setBusy(true);
+    setErr(null);
+    try {
+      const id = await createTrip(title.trim(), cover, trip);
+      fresh.id = id;
+      location.hash = `#/trip/${id}`;
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Could not create the trip.');
+    }
+    setBusy(false);
+  }
+  if (!open)
+    return (
+      <p className="new-trip">
+        <button type="button" className="add-btn" onClick={() => setOpen(true)}>
+          <Icon name="plus" size={18} /> New trip
+        </button>
+      </p>
+    );
+  return (
+    <form className="new-trip-form" onSubmit={create}>
+      <label>Trip name<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Madeira, Japan, Dolomites…" autoFocus /></label>
+      <div className="two">
+        <label>From<input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></label>
+        <label>To<input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></label>
+      </div>
+      <label>Cover look<select value={cover} onChange={(e) => setCover(e.target.value)}>{Object.keys(THEMES).map((k) => <option key={k}>{k}</option>)}</select></label>
+      {err && <p className="auth-error">{err}</p>}
+      <div className="row">
+        <button className="auth-primary" disabled={busy}>{busy ? 'Creating…' : 'Create trip'}</button>
+        <button type="button" className="chip" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
   );
 }

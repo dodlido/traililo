@@ -84,4 +84,13 @@ export const kindLabel: Record<Entry['kind'], string> = {
   note: 'Note',
 };
 
-export const countryName: Record<string, string> = { AR: 'Argentina', CL: 'Chile' };
+const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
+export const countryName = new Proxy({} as Record<string, string>, {
+  get: (_t, code: string) => {
+    try {
+      return regionNames?.of(code.toUpperCase()) ?? code;
+    } catch {
+      return code;
+    }
+  },
+});

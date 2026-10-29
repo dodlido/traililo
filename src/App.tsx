@@ -4,6 +4,10 @@ import { MapView, type Focus, type Tracks } from './MapView.tsx';
 import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
+import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
+import { fresh, saveTrip } from './backend.ts';
+import { computeTotals } from './totals.ts';
+import { THEMES } from './scenes.tsx';
 import { countryName, dayOfMonth, minutes, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
 
 interface TripData {
@@ -16,6 +20,9 @@ interface TripData {
   tracks: Tracks;
   runs: ReturnType<typeof regionRuns>;
   staysById: ReturnType<typeof stayById>;
+  editing: boolean;
+  openSheet: (s: SheetState) => void;
+  mutate: (fn: (t: Trip) => void) => Promise<void>;
 }
 const TripCtx = createContext<TripData>(null as unknown as TripData);
 const useT = () => useContext(TripCtx);
@@ -44,10 +51,46 @@ const useDesktop = () => {
 };
 
 export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; sub: string }) {
-  const trip = bundle.trip;
+  const [trip, setTrip] = useState(bundle.trip);
+  const tripRef = useRef(trip);
+  const versionRef = useRef(bundle.version);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const [editing, setEditing] = useState(() => bundle.owner && fresh.id === bundle.id);
+  const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [title, setTitle] = useState(bundle.title);
+  const [cover, setCover] = useState(bundle.cover);
+  const flash = (text: string, bad?: boolean) => {
+    setToast({ text, bad });
+    window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), bad ? 6000 : 1800);
+  };
+  // Every change is applied to a copy, shown at once, and saved; if the save fails the change is undone.
+  const commit = (fn: (t: Trip) => void, meta?: { title: string; cover: string }) => {
+    const run = async () => {
+      const before = tripRef.current;
+      const next = structuredClone(before);
+      fn(next);
+      next.totals = computeTotals(next);
+      tripRef.current = next;
+      setTrip(next);
+      try {
+        versionRef.current = await saveTrip({ ...bundle, title: meta?.title ?? title, cover: meta?.cover ?? cover, version: versionRef.current }, next);
+        flash('Saved');
+      } catch (e) {
+        tripRef.current = before;
+        setTrip(before);
+        flash(e instanceof Error ? e.message : 'Could not save', true);
+        throw e;
+      }
+    };
+    const p = queue.current.then(run, run);
+    queue.current = p.catch(() => {});
+    return p as Promise<void>;
+  };
   const data = useMemo<TripData>(
-    () => ({ base, owner: bundle.owner, trip, title: bundle.title, report: bundle.report, sheet: bundle.sources ?? {}, tracks: bundle.tracks, runs: regionRuns(trip), staysById: stayById(trip) }),
-    [bundle, base, trip],
+    () => ({ base, owner: bundle.owner, trip, title, report: bundle.report, sheet: bundle.sources ?? {}, tracks: bundle.tracks, runs: regionRuns(trip), staysById: stayById(trip), editing: editing && bundle.owner, openSheet: setSheet, mutate: commit }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bundle, base, trip, title, editing],
   );
   const { runs, staysById, tracks } = data;
   // friends' view: no to-dos, addresses, phone numbers or booking details. Friends only ever get that data; the owner can preview it.
@@ -102,7 +145,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     <div className={`shell${shared ? ' is-shared' : ''}`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
         <div className="page" ref={page}>
-          {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} />}
+          {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} shared={shared} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
           {route.tab === 'stays' && <Stays shared={shared} go={go} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
@@ -131,6 +174,24 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
           </button>
         </div>
       </section>
+      {toast && <div className={toast.bad ? 'toast bad' : 'toast'} role="status">{toast.text}</div>}
+      {sheet?.type === 'add' && <AddMenu date={sheet.date} open={setSheet} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'settings' && (
+        <SettingsEditor
+          title={title}
+          cover={cover}
+          themes={Object.keys(THEMES)}
+          onClose={() => setSheet(null)}
+          onSave={async (t, c) => {
+            await commit(() => {}, { title: t, cover: c });
+            setTitle(t);
+            setCover(c);
+          }}
+        />
+      )}
     </div>
     </ShowCtx.Provider>
     </TripCtx.Provider>
@@ -146,10 +207,10 @@ function Tab({ icon, label, on, onClick }: { icon: string; label: string; on: bo
   );
 }
 
-function Journey({ shared, setShared, go }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void }) {
-  const { trip, runs, base, owner, title } = useT();
+function Journey({ shared, setShared, go, editing, setEditing }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void }) {
+  const { trip, runs, base, owner, title, openSheet } = useT();
   const t = trip.totals;
-  const countries = [...new Set(trip.days.map((d) => d.country).filter(Boolean))].map((c) => countryName[c as 'AR' | 'CL']);
+  const countries = [...new Set(trip.days.map((d) => d.country).filter(Boolean))].map((c) => countryName[c as string]);
   return (
     <>
       <header className="cover">
@@ -160,9 +221,16 @@ function Journey({ shared, setShared, go }: { shared: boolean; setShared: (v: bo
           </a>
           <span className="wordmark">TraiLilo</span>
           {owner && (
-            <button type="button" className={shared ? 'chip is-on' : 'chip'} aria-pressed={shared} onClick={() => setShared(!shared)}>
-              <Icon name="eye" size={16} /> {shared ? 'Friends’ view' : 'Your view'}
-            </button>
+            <>
+              {!shared && (
+                <button type="button" className={editing ? 'chip is-on' : 'chip'} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+                  <Icon name="edit" size={16} /> {editing ? 'Done' : 'Edit'}
+                </button>
+              )}
+              <button type="button" className={shared ? 'chip is-on' : 'chip'} aria-pressed={shared} onClick={() => { setShared(!shared); setEditing(false); }}>
+                <Icon name="eye" size={16} /> {shared ? 'Friends’ view' : 'Your view'}
+              </button>
+            </>
           )}
         </div>
         <div className="cover-text">
@@ -170,6 +238,9 @@ function Journey({ shared, setShared, go }: { shared: boolean; setShared: (v: bo
             {monthShort(trip.startDate)} {dayOfMonth(trip.startDate)} to {monthShort(trip.endDate)} {dayOfMonth(trip.endDate)}, {trip.endDate.slice(0, 4)}
           </p>
           <h1>{title}</h1>
+          {editing && owner && !shared && (
+            <button type="button" className="chip" onClick={() => openSheet({ type: 'settings' })}><Icon name="edit" size={16} /> Trip settings</button>
+          )}
           <p className="cover-sub">
             {t.days} days · {countries.join(' and ')}
           </p>
@@ -259,7 +330,7 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
 }
 
 function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
-  const { trip, base } = useT();
+  const { trip, base, editing, openSheet } = useT();
   return (
     <>
       <header className="page-head">
@@ -273,6 +344,11 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
             <li key={s.id} className="stay-card" style={{ ['--accent' as string]: th.accent }}>
               <Scene region={region} theme={th} className="stay-art" />
               <div>
+                {editing && !shared && (
+                  <button type="button" className="round small edit-btn" aria-label={`Edit ${s.name}`} onClick={() => openSheet({ type: 'stay', id: s.id })}>
+                    <Icon name="edit" size={16} />
+                  </button>
+                )}
                 <h2>{s.name}</h2>
                 <p>
                   {region} · {shortDate(s.checkIn)} to {shortDate(s.checkOut)}
@@ -289,6 +365,13 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
           );
         })}
       </ul>
+      {editing && !shared && (
+        <p className="foot-link">
+          <button type="button" className="add-btn" onClick={() => openSheet({ type: 'stay' })}>
+            <Icon name="plus" size={18} /> Add a place to sleep
+          </button>
+        </p>
+      )}
       <p className="foot-link">
         <a href={base}>Back to the journey</a>
       </p>
@@ -297,7 +380,9 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
 }
 
 function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: boolean }) {
-  const { staysById, sheet, owner } = useT();
+  const { staysById, sheet, owner, editing, openSheet, mutate } = useT();
+  const [newTodo, setNewTodo] = useState('');
+  const canEdit = editing && !shared;
   const stay = day.stayId ? staysById.get(day.stayId) : undefined;
   const shownWarnings = new Set(day.entries.flatMap((e) => e.warnings));
   const todos = shared ? [] : day.todos.filter((td) => !shownWarnings.has(td.text));
@@ -310,22 +395,65 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
           {weekday(day.date)}
           <small>{monthShort(day.date)}</small>
         </span>
+        {canEdit && (
+          <button type="button" className="round small edit-btn" aria-label="Edit this day" onClick={() => openSheet({ type: 'day', date: day.date })}>
+            <Icon name="edit" size={16} />
+          </button>
+        )}
       </div>
       <div className="day-body">
         {day.entries.map((e) => (
-          <EntryView key={e.id} entry={e} shared={shared} />
+          <EntryView key={e.id} entry={e} shared={shared} date={day.date} />
         ))}
         {nothing && <p className="empty">Nothing planned yet.</p>}
-        {todos.length > 0 && (
+        {(todos.length > 0 || canEdit) && !shared && (
           <ul className="todos">
             {todos.map((td) => (
-              <li key={td.id} className={td.warning ? 'todo todo-warn' : 'todo'}>
-                {td.text}
+              <li key={td.id} className={`${td.warning ? 'todo todo-warn' : 'todo'}${td.done ? ' is-done' : ''}`}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={td.done}
+                    onChange={() =>
+                      mutate((t) => {
+                        const x = t.days.find((q) => q.date === day.date)!.todos.find((q) => q.id === td.id);
+                        if (x) x.done = !x.done;
+                      })
+                    }
+                  />
+                  <span>{td.text}</span>
+                </label>
+                {canEdit && (
+                  <button type="button" className="round small" aria-label="Delete to-do" onClick={() => mutate((t) => { const dd = t.days.find((q) => q.date === day.date)!; dd.todos = dd.todos.filter((q) => q.id !== td.id); })}>
+                    <Icon name="close" size={14} />
+                  </button>
+                )}
               </li>
             ))}
+            {canEdit && (
+              <li className="todo-add">
+                <form
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    const text = newTodo.trim();
+                    if (!text) return;
+                    setNewTodo('');
+                    mutate((t) => t.days.find((q) => q.date === day.date)!.todos.push({ id: `${day.date}-t${Math.random().toString(36).slice(2, 7)}`, text, done: false }));
+                  }}
+                >
+                  <input placeholder="Add a to-do" value={newTodo} onChange={(ev) => setNewTodo(ev.target.value)} />
+                  <button className="chip">Add</button>
+                </form>
+              </li>
+            )}
           </ul>
         )}
         {stay && <StayLine stay={stay} date={day.date} shared={shared} />}
+        {canEdit && (
+          <button type="button" className="add-btn" onClick={() => openSheet({ type: 'add', date: day.date })}>
+            <Icon name="plus" size={18} /> Add to this day
+          </button>
+        )}
         {owner && !shared && sheet[day.date] && <SheetText cells={sheet[day.date]} />}
       </div>
     </li>
@@ -333,6 +461,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
 }
 
 function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: boolean }) {
+  const { editing, openSheet } = useT();
   const night = nightOf(stay, date);
   return (
     <p className="stay">
@@ -346,12 +475,17 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
           {p}
         </span>
       ))}
+      {editing && !shared && (
+        <button type="button" className="round small edit-btn" aria-label="Edit this place to sleep" onClick={() => openSheet({ type: 'stay', id: stay.id })}>
+          <Icon name="edit" size={16} />
+        </button>
+      )}
     </p>
   );
 }
 
-function EntryView({ entry: e, shared }: { entry: Entry; shared: boolean }) {
-  const { tracks } = useT();
+function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; date: string }) {
+  const { tracks, editing, openSheet } = useT();
   const showOnMap = useContext(ShowCtx);
   const mappable = !!(tracks[e.id] || e.at);
   const notes = shared ? e.notes.filter((n) => !PERSONAL_NOTE.test(n)) : e.notes;
@@ -382,7 +516,19 @@ function EntryView({ entry: e, shared }: { entry: Entry; shared: boolean }) {
             ))}
           </ul>
         )}
+        {!shared && (e.privateNotes ?? []).length > 0 && (
+          <ul className="notes private-notes">
+            {(e.privateNotes ?? []).map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        )}
         <Links links={e.links} shared={shared} />
+        {editing && !shared && (
+          <button type="button" className="show-map edit-entry" onClick={() => openSheet({ type: 'entry', date, id: e.id })}>
+            <Icon name="edit" size={16} /> Edit
+          </button>
+        )}
         {mappable && (
           <button type="button" className="show-map" onClick={() => showOnMap(e.id)}>
             <Icon name="map" size={16} /> {tracks[e.id] ? 'Show trail on map' : 'Show on map'}

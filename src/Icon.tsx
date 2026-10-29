@@ -13,6 +13,9 @@ const P: Record<string, ReactElement> = {
   next: <path d="M9 5l7 7-7 7" />,
   eye: (<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>),
   flag: <path d="M5 21V4M5 5h12l-2 4 2 4H5" />,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
+  plus: <path d="M12 5v14M5 12h14" />,
 };
 
 export function Icon({ name, size = 22 }: { name: string; size?: number }) {
