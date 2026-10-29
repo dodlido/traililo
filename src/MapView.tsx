@@ -370,7 +370,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         showRef.current?.(lngLat(st.point!), list.map((x) => x.name).join(' · '), list.map(nights).join(' · '), st.point!.approx ? 'Town-level position' : undefined, undefined, 'stay');
       });
       stayRef.current.push({ key, el });
-      stayMarkers.current.push(new maplibregl.Marker({ element: el, anchor: 'center', offset: [0, -26] }).setLngLat(lngLat(st.point!)).addTo(map));
+      stayMarkers.current.push(new maplibregl.Marker({ element: el, anchor: 'center', offset: [0, -30] }).setLngLat(lngLat(st.point!)).addTo(map));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, trip.stays]);
