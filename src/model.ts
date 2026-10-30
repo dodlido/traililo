@@ -41,6 +41,8 @@ export interface Leg {
   toPoint?: Point;
   /** The road the drive follows, as [lon, lat] pairs, found when the start and end were set. */
   path?: [number, number][];
+  /** A ferry line was looked for and none was found, so it stays a straight line. */
+  pathTried?: boolean;
 }
 
 interface EntryBase {

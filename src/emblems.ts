@@ -1,6 +1,6 @@
 // The little pictures that sit on the map: one badge per kind of place, drawn once and handed to MapLibre.
 import type * as maplibregl from 'maplibre-gl';
-import { CATS, FERRY, PLANE, type Cat } from './mapkit.ts';
+import { BOAT, CATS, FERRY, PLANE, type Cat } from './mapkit.ts';
 
 export type Look = 'm' | 'w';
 const INK = '#2a170a';
@@ -55,6 +55,20 @@ function plane(look: Look): ImageData {
   return g.getImageData(0, 0, 64, 64);
 }
 
+function boat(look: Look): ImageData {
+  const c = canvas(64);
+  const g = c.getContext('2d')!;
+  g.setTransform(2.4, 0, 0, 2.4, 3, 3);
+  const p = new Path2D(BOAT);
+  g.lineJoin = 'round';
+  g.lineWidth = 1.5;
+  g.strokeStyle = look === 'w' ? INK : NIGHT;
+  g.fillStyle = look === 'w' ? '#1f5f8b' : '#dce9ea';
+  g.stroke(p);
+  g.fill(p);
+  return g.getImageData(0, 0, 64, 64);
+}
+
 export function addEmblems(map: maplibregl.Map) {
   const put = (name: string, d: ImageData) => map.addImage(name, d, { pixelRatio: 2 });
   for (const look of ['m', 'w'] as Look[]) {
@@ -65,5 +79,6 @@ export function addEmblems(map: maplibregl.Map) {
     put(`port-flight-${look}`, badge(look, w ? '#1f5f8b' : '#9a8cf0', PLANE, true, w ? '#f3e3b8' : NIGHT));
     put(`port-ferry-${look}`, badge(look, w ? '#1f5f8b' : '#9a8cf0', FERRY, false, w ? '#f3e3b8' : NIGHT));
     put(`plane-${look}`, plane(look));
+    put(`boat-${look}`, boat(look));
   }
 }

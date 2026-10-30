@@ -61,8 +61,9 @@ function segmentsOf(trip: Trip): Seg[] {
     const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
     const legs = commute?.legs ?? [];
     // legs with a start and end of their own (and a road, for drives) are drawn as they are
-    if (legs.length > 0 && legs.every((l) => l.fromPoint && l.toPoint)) {
+    if (legs.length > 0 && (legs.every((l) => l.fromPoint && l.toPoint) || legs.some((l) => l.path))) {
       for (const l of legs) {
+        if (!(l.fromPoint && l.toPoint)) continue;
         const pts = l.path ? l.path.map(([lon, lat]) => ({ lon, lat })) : [l.fromPoint!, l.toPoint!];
         segs.push({ pts, mode: l.mode === 'ferry' ? 'ferry' : l.mode === 'flight' ? 'flight' : 'drive', day: i });
       }
@@ -110,6 +111,29 @@ function portsData(segs: Seg[]): FeatureCollection<GeoPoint> {
   for (const s of segs) {
     if (s.mode !== 'flight' && s.mode !== 'ferry') continue;
     for (const p of [s.pts[0], s.pts[s.pts.length - 1]]) f.push({ type: 'Feature', properties: { kind: s.mode, day: s.day }, geometry: { type: 'Point', coordinates: lngLat(p) } });
+  }
+  return { type: 'FeatureCollection', features: f };
+}
+/** One small boat in the middle of each ferry line. */
+function boatsData(segs: Seg[]): FeatureCollection<GeoPoint> {
+  const f: Feature<GeoPoint>[] = [];
+  for (const s of segs) {
+    if (s.mode !== 'ferry') continue;
+    // halfway along the line's length, not halfway along its list of points
+    let total = 0;
+    for (let i = 1; i < s.pts.length; i++) total += Math.hypot(s.pts[i].lon - s.pts[i - 1].lon, s.pts[i].lat - s.pts[i - 1].lat);
+    let run = 0;
+    let at = s.pts[0];
+    for (let i = 1; i < s.pts.length; i++) {
+      const len = Math.hypot(s.pts[i].lon - s.pts[i - 1].lon, s.pts[i].lat - s.pts[i - 1].lat);
+      if (run + len >= total / 2) {
+        const t = len ? (total / 2 - run) / len : 0;
+        at = { lon: s.pts[i - 1].lon + (s.pts[i].lon - s.pts[i - 1].lon) * t, lat: s.pts[i - 1].lat + (s.pts[i].lat - s.pts[i - 1].lat) * t };
+        break;
+      }
+      run += len;
+    }
+    f.push({ type: 'Feature', properties: { day: s.day }, geometry: { type: 'Point', coordinates: lngLat(at) } });
   }
   return { type: 'FeatureCollection', features: f };
 }
@@ -202,6 +226,7 @@ const MODERN: Paint = [
   ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.8, 'scenic', 3.4, 'ferry', 2.4, 1.6]],
   ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'scenic', lit([2.2, 1.4]), 'ferry', lit([1, 1.6]), 'trek', lit([1, 0]), lit([2.4, 1.5])]],
   ['route-flight', 'line-color', BERRY], ['route-flight', 'line-width', 1.1], ['route-flight', 'line-dasharray', [3, 2.4]],
+  ['route-ferry', 'line-color', BERRY], ['route-ferry', 'line-width', 1.3], ['route-ferry', 'line-dasharray', [3, 2.4]],
   ['trail-all-line', 'line-color', AMBER], ['trail-all-line', 'line-opacity', 0.55],
   ['trail-casing', 'line-color', NIGHT], ['trail-casing', 'line-width', 8], ['trail-casing', 'line-opacity', 0.7], ['trail-casing', 'line-blur', 1],
   ['trail-line', 'line-color', AMBER], ['trail-line', 'line-width', 3.8], ['trail-line', 'line-dasharray', [1, 0]],
@@ -214,6 +239,7 @@ const WEST: Paint = [
   ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.6, 'scenic', 3.2, 'ferry', 2.6, 1.7]],
   ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'ferry', lit([1, 1.7]), 'scenic', lit([2.2, 1.4]), 'trek', lit([1, 0]), lit([2.6, 1.6])]],
   ['route-flight', 'line-color', RED], ['route-flight', 'line-width', 1.3], ['route-flight', 'line-dasharray', [3, 2.2]],
+  ['route-ferry', 'line-color', BLUE], ['route-ferry', 'line-width', 1.6], ['route-ferry', 'line-dasharray', [3, 2.2]],
   ['trail-all-line', 'line-color', GREEN], ['trail-all-line', 'line-opacity', 0.8],
   ['trail-casing', 'line-color', INK], ['trail-casing', 'line-width', 7], ['trail-casing', 'line-opacity', 0.92], ['trail-casing', 'line-blur', 0],
   ['trail-line', 'line-color', GREEN], ['trail-line', 'line-width', 3.4], ['trail-line', 'line-dasharray', [1.6, 1]],
@@ -233,6 +259,7 @@ function applyLook(map: maplibregl.Map, west: boolean) {
   map.setLayoutProperty('pins-later', 'icon-image', 'stop-later-' + look);
   map.setLayoutProperty('ports', 'icon-image', ['concat', 'port-', ['get', 'kind'], '-' + look]);
   map.setLayoutProperty('planes', 'icon-image', 'plane-' + look);
+  map.setLayoutProperty('boats', 'icon-image', 'boat-' + look);
   for (const l of ['route-later']) {
     try {
       map.setLayoutProperty(l, 'line-cap', west ? 'round' : 'butt');
@@ -341,6 +368,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
       map.addSource('poidots', { type: 'geojson', data: dots(pois) });
       map.addSource('ports', { type: 'geojson', data: portsData(segs) });
       map.addSource('planes', { type: 'geojson', data: planesData(segs) });
+      map.addSource('boats', { type: 'geojson', data: boatsData(segs) });
       map.addSource('trail', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('trail-all', { type: 'geojson', data: allTrails });
       map.addSource('sitedots', { type: 'geojson', data: pointsData(allSites) });
@@ -359,6 +387,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         },
       });
       map.addLayer({ id: 'route-flight', type: 'line', source: 'route', paint: { 'line-color': BERRY, 'line-width': 2.2, 'line-dasharray': [2, 2] } });
+      map.addLayer({ id: 'route-ferry', type: 'line', source: 'route', paint: { 'line-color': BERRY, 'line-width': 1.3, 'line-dasharray': [3, 2.4] } });
       const sz = (a: number, b: number, c: number, d: number) => ['interpolate', ['linear'], ['zoom'], 3, a, 6, b, 9, c, 12, d] as maplibregl.ExpressionSpecification;
       const icon = { 'icon-allow-overlap': true, 'icon-ignore-placement': true } as const;
       map.addLayer({ id: 'pins-later', type: 'symbol', source: 'pins', layout: { ...icon, 'icon-image': 'stop-later-m', 'icon-size': sz(0.22, 0.3, 0.4, 0.5) }, paint: { 'icon-opacity': 0.75 } });
@@ -369,6 +398,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
       map.addLayer({ id: 'site-dots', type: 'symbol', source: 'sitedots', minzoom: 3, layout: { ...icon, 'icon-image': ['concat', 'cat-', ['get', 'cat'], '-m'], 'icon-size': sz(0.2, 0.32, 0.46, 0.7) } });
       map.addLayer({ id: 'poi-dots', type: 'symbol', source: 'poidots', minzoom: 3, layout: { ...icon, 'icon-image': ['concat', 'cat-', ['get', 'cat'], '-m'], 'icon-size': sz(0.18, 0.28, 0.42, 0.65) } });
       map.addLayer({ id: 'ports', type: 'symbol', source: 'ports', layout: { ...icon, 'icon-image': ['concat', 'port-', ['get', 'kind'], '-m'], 'icon-size': sz(0.28, 0.36, 0.46, 0.56) } });
+      map.addLayer({ id: 'boats', type: 'symbol', source: 'boats', layout: { ...icon, 'icon-image': 'boat-m', 'icon-size': sz(0.7, 0.85, 0.95, 1.05) } });
       map.addLayer({ id: 'planes', type: 'symbol', source: 'planes', layout: { ...icon, 'icon-image': 'plane-m', 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-size': sz(0.8, 0.95, 1.05, 1.15) } });
 
       // tapping a place or a trail opens its name and details
@@ -486,6 +516,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     (map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(routeData(segs));
     (map.getSource('ports') as maplibregl.GeoJSONSource | undefined)?.setData(portsData(segs));
     (map.getSource('planes') as maplibregl.GeoJSONSource | undefined)?.setData(planesData(segs));
+    (map.getSource('boats') as maplibregl.GeoJSONSource | undefined)?.setData(boatsData(segs));
     (map.getSource('pins') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))));
     (map.getSource('poidots') as maplibregl.GeoJSONSource | undefined)?.setData(dots(pois));
     (map.getSource('sitedots') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(allSites));
@@ -587,8 +618,10 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     // the overview shows the whole route as travelled; reading a day greys out what is still to come
     const upTo = showAll ? 9999 : activeIdx;
     map.setFilter('route-later', ['>', ['get', 'day'], upTo]);
-    map.setFilter('route-casing', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight']]);
-    map.setFilter('route-done', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight']]);
+    map.setFilter('route-casing', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight'], ['!=', ['get', 'mode'], 'ferry']]);
+    map.setFilter('route-done', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight'], ['!=', ['get', 'mode'], 'ferry']]);
+    map.setFilter('route-ferry', ['all', ['<=', ['get', 'day'], upTo], ['==', ['get', 'mode'], 'ferry']]);
+    map.setFilter('boats', ['<=', ['get', 'day'], upTo]);
     map.setFilter('route-flight', ['all', ['<=', ['get', 'day'], upTo], ['==', ['get', 'mode'], 'flight']]);
     map.setFilter('ports', ['<=', ['get', 'day'], upTo]);
     map.setFilter('planes', ['<=', ['get', 'day'], upTo]);

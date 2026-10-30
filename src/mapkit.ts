@@ -50,3 +50,4 @@ export function glyphSvg(cat: Cat): SVGElement {
 /** Drawings for the things that are not places: planes and boats. */
 export const PLANE = 'M12 2l2 7 8 5v2l-8-2.5-.7 5.5 2.7 2v1l-4-1-4 1v-1l2.7-2-.7-5.5L2 16v-2l8-5z';
 export const FERRY = 'M3 15l2 5h14l2-5zM12 4v8M12 6l5 5h-5';
+export const BOAT = 'M2 14h20l-3 6H5zM7 14V9h8l2 5M10 9V4h3v5';

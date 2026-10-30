@@ -15,6 +15,7 @@ import { JournalBlock, JournalEditor } from './Journal.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, saveTrip } from './backend.ts';
+import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
 import { countryName, dayOfMonth, minutes, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
@@ -160,6 +161,27 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const today = useMemo(() => whereIsToday(trip), [trip]);
   const [active, setActive] = useState(() => (today.state === 'during' ? today.date : trip.days[0].date));
   const pendingDate = useRef<string | null>(null);
+  // the owner's and partners' phones fill in the roads and ferry lines once, then they are saved with the trip
+  const routed = useRef(false);
+  useEffect(() => {
+    if (!bundle.owner || routed.current || !navigator.onLine) return;
+    const jobs = roadJobs(tripRef.current);
+    if (!jobs.length) return;
+    routed.current = true;
+    (async () => {
+      const found: { job: (typeof jobs)[number]; r: Awaited<ReturnType<typeof routeJob>> }[] = [];
+      for (const job of jobs) {
+        try {
+          found.push({ job, r: await routeJob(job) });
+        } catch {
+          /* try again next time the app opens */
+        }
+        await new Promise((r) => setTimeout(r, 350));
+      }
+      if (found.length) await commit((t) => applyRoutes(t, found)).catch(() => {});
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [focus, setFocus] = useState<Focus | null>(null);
   const desktop = useDesktop();
   const page = useRef<HTMLDivElement>(null);
