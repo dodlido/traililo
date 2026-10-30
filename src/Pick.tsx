@@ -164,7 +164,7 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
           {kinds.map((k) => <span key={k}><i className={`plan-dot-key ${k}`} />{KIND_LABEL[k]}</span>)}
         </p>
       )}
-      <p className="small">{pickable ? 'Tap the map (or a dot) to pin a spot. Pinch or use + and − to move closer.' : 'Your plan around here. Press Map to pin a spot by tapping.'}</p>
+      <p className="small">{pickable ? 'Tap the map (or a dot) to pin a spot. Pinch or use + and − to move closer.' : 'Your plan around here. Tap it to pin a spot.'}</p>
     </div>
   );
 }
