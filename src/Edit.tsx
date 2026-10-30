@@ -249,20 +249,36 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
 
   const quick = d.kind === 'hike' && isNew && hmode === 'link';
   const driveLegs = d.kind === 'commute' ? (c.legs ?? []).filter((l) => l.mode === 'drive') : [];
-  const pickLeg = async (i: number, side: 'from' | 'to', name: string, pt: Point) => {
-    const cur = c.legs[i];
-    const next = { ...cur, [side]: name.split(',')[0].trim(), [side === 'from' ? 'fromPoint' : 'toPoint']: pt, path: undefined } as Leg;
-    setRoadErr('');
-    setD((p) => ({ ...p, legs: (p as CommuteEntry).legs.map((q, j) => (j === i ? next : q)) }) as Entry);
-    if (!(next.fromPoint && next.toPoint)) return;
+  const ROAD: TransportMode[] = ['drive', 'bus', 'taxi'];
+  const patchLeg = (i: number, patch: Partial<Leg>) => setD((p) => ({ ...p, legs: (p as CommuteEntry).legs.map((q, j) => (j === i ? { ...q, ...patch } : q)) }) as Entry);
+  // with a start and an end, everything else follows: the road for road trips, the straight distance and a rough time otherwise
+  const fill = async (i: number, leg: Leg) => {
+    if (!(leg.fromPoint && leg.toPoint)) return;
     setRouting(i);
+    setRoadErr('');
     try {
-      const r = await routeRoad([next.fromPoint, next.toPoint]);
-      setD((p) => ({ ...p, legs: (p as CommuteEntry).legs.map((q, j) => (j === i ? { ...q, path: r.path, distanceKm: r.km, durationMin: r.min } : q)) }) as Entry);
+      if (ROAD.includes(leg.mode)) {
+        const r = await routeRoad([leg.fromPoint, leg.toPoint]);
+        patchLeg(i, { path: r.path, distanceKm: r.km, durationMin: r.min });
+      } else {
+        const km = Math.round(flat(leg.fromPoint, leg.toPoint) * 10) / 10;
+        const min = leg.mode === 'flight' ? Math.round((km / 780) * 60 + 50) : leg.mode === 'ferry' ? Math.round((km / 26) * 60) : undefined;
+        patchLeg(i, { path: undefined, distanceKm: km, durationMin: min });
+      }
     } catch (e) {
       setRoadErr(e instanceof Error ? e.message : 'Could not find the road');
     }
     setRouting(null);
+  };
+  const pickLeg = async (i: number, side: 'from' | 'to', name: string, pt: Point) => {
+    const next = { ...c.legs[i], [side]: name.split(',')[0].trim(), [side === 'from' ? 'fromPoint' : 'toPoint']: pt, path: undefined } as Leg;
+    patchLeg(i, next);
+    await fill(i, next);
+  };
+  const setMode = async (i: number, mode: TransportMode) => {
+    const next = { ...c.legs[i], mode, path: undefined } as Leg;
+    patchLeg(i, next);
+    await fill(i, next);
   };
   const loadGpx = async (f: File | undefined) => {
     if (!f) return;
@@ -309,14 +325,14 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
     }
     if (!d.title.trim() && d.kind !== 'commute') return setErr('Give it a name first.');
     if (d.kind === 'commute') {
-      for (const l of c.legs ?? []) if (l.mode === 'drive' && !(l.fromPoint && l.toPoint && l.path)) return setErr('Pick a start and an end for each drive, so the road can be found.');
+      for (const l of c.legs ?? []) if ((isNew || l.fromPoint || l.toPoint) && (!(l.fromPoint && l.toPoint) || (ROAD.includes(l.mode) && !l.path))) return setErr('Pick a start and an end for each leg' + (c.legs.some((q) => ROAD.includes(q.mode)) ? ', so the road can be found.' : '.'));
     }
     const hadWps = ((existing as HikeEntry | undefined)?.waypoints?.length ?? 0) > 0;
     const track = d.kind === 'hike' && wps.length >= 2 ? { lines: [wps.map((w) => [w.point.lon, w.point.lat])], km: Math.round(wpKm * 10) / 10, name: d.title.trim() } : null;
     const out: Entry = {
       ...d,
       ...(d.kind === 'hike' ? { waypoints: wps.length ? wps : undefined, ...(wps.length && !d.at ? { at: wps[0].point } : {}), ...(track && h.distanceKm === undefined ? { distanceKm: track.km } : {}) } : {}),
-      title: d.title.trim() || (c.legs?.[0] ? `${c.legs[0].mode === 'drive' ? 'Drive' : c.legs[0].mode} ${c.legs[0].from ?? ''} to ${c.legs[0].to ?? ''}`.trim() : 'Getting there'),
+      title: d.title.trim() || (c.legs?.[0] ? `${{ drive: 'Drive', bus: 'Bus', taxi: 'Taxi', ferry: 'Ferry', flight: 'Flight' }[c.legs[0].mode] ?? 'Trip'} ${c.legs[0].from ?? ''} to ${c.legs[0].to ?? ''}`.trim() : 'Getting there'),
       notes: lines(notes),
       warnings: lines(warn),
       privateNotes: lines(priv),
@@ -447,36 +463,35 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
         <div className="legs-edit">
           <h3>Legs</h3>
           {(c.legs ?? []).map((l: Leg, i: number) => {
-            const modeSel = (
-              <select value={l.mode} aria-label="How" onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, mode: e.target.value as TransportMode } : q)) })}>
-                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            );
-            const remove = <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>;
-            if (l.mode !== 'drive')
-              return (
-                <div className="leg-row" key={i}>
-                  {modeSel}
-                  <input placeholder="From" value={l.from ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, from: e.target.value } : q)) })} />
-                  <input placeholder="To" value={l.to ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, to: e.target.value } : q)) })} />
-                  <input placeholder="min" type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, durationMin: num(e.target.value) } : q)) })} />
-                  {remove}
-                </div>
-              );
+            const road = ROAD.includes(l.mode);
             return (
               <div className="drive-leg" key={i}>
-                <div className="leg-row">{modeSel}{remove}</div>
+                <div className="leg-row">
+                  <select value={l.mode} aria-label="How" onChange={(e) => void setMode(i, e.target.value as TransportMode)}>
+                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
+                </div>
                 <Field label="Start (required)">
                   {l.fromPoint && <p className="pinned">{l.from || 'Pinned spot'}</p>}
-                  <PlaceSearch current={l.fromPoint} near={l.toPoint} onPick={(n, p) => void pickLeg(i, 'from', n, p)} onClear={() => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, fromPoint: undefined, path: undefined } : q)) })} />
+                  <PlaceSearch current={l.fromPoint} near={l.toPoint} onPick={(n, p) => void pickLeg(i, 'from', n, p)} onClear={() => patchLeg(i, { fromPoint: undefined, path: undefined })} />
                 </Field>
                 <Field label="End (required)">
                   {l.toPoint && <p className="pinned">{l.to || 'Pinned spot'}</p>}
-                  <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, toPoint: undefined, path: undefined } : q)) })} />
+                  <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => patchLeg(i, { toPoint: undefined, path: undefined })} />
                 </Field>
-                {routing === i && <p className="road">Finding the road…</p>}
-                {routing !== i && l.path && <p className="road">By road: {l.distanceKm} km · {minutes(l.durationMin)} (no traffic)</p>}
-                {roadErr && routing !== i && !l.path && <p className="auth-error">{roadErr}</p>}
+                {routing === i && <p className="road">{road ? 'Finding the road…' : 'Working it out…'}</p>}
+                {routing !== i && l.fromPoint && l.toPoint && (road ? l.path : true) && (
+                  <p className="road">
+                    {road ? 'By road' : 'In a straight line'}: {l.distanceKm} km{l.durationMin ? ` · ${minutes(l.durationMin)}` : ''}{road ? ' (no traffic)' : ''}
+                  </p>
+                )}
+                {!road && l.fromPoint && l.toPoint && (
+                  <Field label="Time in minutes" hint="A rough guess. Change it to the timetable if you know it.">
+                    <input type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => patchLeg(i, { durationMin: num(e.target.value) })} />
+                  </Field>
+                )}
+                {roadErr && routing !== i && road && !l.path && l.fromPoint && l.toPoint && <p className="auth-error">{roadErr}</p>}
               </div>
             );
           })}
