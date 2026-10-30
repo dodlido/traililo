@@ -4,7 +4,7 @@ import type { Tracks } from './MapView.tsx';
 import { PHOTOS, photoUrl } from './photos.ts';
 import { photoUrlOf } from './backend.ts';
 
-export type BaseId = 'dark' | 'terrain' | 'satellite';
+export type BaseId = 'west' | 'dark' | 'terrain' | 'satellite';
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 const LAYERS: Record<BaseId, { path: string; kb: number }[]> = {
   dark: [
@@ -12,6 +12,7 @@ const LAYERS: Record<BaseId, { path: string; kb: number }[]> = {
     { path: 'Canvas/World_Dark_Gray_Reference', kb: 6 },
   ],
   terrain: [{ path: 'World_Topo_Map', kb: 28 }],
+  west: [{ path: 'World_Topo_Map', kb: 28 }],
   satellite: [
     { path: 'World_Imagery', kb: 40 },
     { path: 'Reference/World_Boundaries_and_Places', kb: 6 },
