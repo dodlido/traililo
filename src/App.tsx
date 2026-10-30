@@ -216,7 +216,12 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     setFocus({ id, n: Date.now() });
     if (!desktop) go('map');
   };
-  const step = (n: number) => setActive(days[Math.min(days.length - 1, Math.max(0, activeIdx + n))].date);
+  const step = (n: number) => {
+    const date = days[Math.min(days.length - 1, Math.max(0, activeIdx + n))].date;
+    setActive(date);
+    // with the journey beside the map, it follows
+    if (desktop) openDay(date);
+  };
 
   return (
     <TripCtx.Provider value={data}>
@@ -232,7 +237,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
         </div>
         <nav className="tabs" aria-label="Sections">
-          <Tab icon="journey" label="Journey" on={route.tab === 'journey'} onClick={() => go('')} />
+          <Tab icon="journey" label="Journey" on={route.tab === 'journey'} onClick={() => (route.tab === 'map' ? openDay(active) : go(''))} />
           {!desktop && <Tab icon="map" label="Map" on={route.tab === 'map'} onClick={() => go('map')} />}
           <Tab icon="bed" label="Stays" on={route.tab === 'stays'} onClick={() => go('stays')} />
           {bundle.owner && !shared && <Tab icon="flag" label="Plan" on={route.tab === 'plan'} onClick={() => go('plan')} />}

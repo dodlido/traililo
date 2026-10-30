@@ -8,6 +8,7 @@ import workerSource from 'worker-text';
 import type { Feature, FeatureCollection, LineString, MultiLineString, Point as GeoPoint } from 'geojson';
 import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
 import { CATS, catOfEntry, glyphSvg, type Cat } from './mapkit.ts';
+import { addEmblems } from './emblems.ts';
 import { minutes } from './derive.ts';
 
 export type Tracks = Record<string, { lines: number[][][]; km: number; name: string }>;
@@ -103,6 +104,28 @@ function routeData(segs: Seg[]): FeatureCollection<LineString> {
   };
 }
 
+/** Airports and harbours: the two ends of each flight and ferry. */
+function portsData(segs: Seg[]): FeatureCollection<GeoPoint> {
+  const f: Feature<GeoPoint>[] = [];
+  for (const s of segs) {
+    if (s.mode !== 'flight' && s.mode !== 'ferry') continue;
+    for (const p of [s.pts[0], s.pts[s.pts.length - 1]]) f.push({ type: 'Feature', properties: { kind: s.mode, day: s.day }, geometry: { type: 'Point', coordinates: lngLat(p) } });
+  }
+  return { type: 'FeatureCollection', features: f };
+}
+/** One small plane in the middle of each flight, pointing the way it is going. */
+function planesData(segs: Seg[]): FeatureCollection<GeoPoint> {
+  const f: Feature<GeoPoint>[] = [];
+  for (const s of segs) {
+    if (s.mode !== 'flight') continue;
+    const a = arc(s.pts[0], s.pts[s.pts.length - 1]);
+    const [p, q, r] = [a[15], a[16], a[17]];
+    const bearing = (Math.atan2((r[0] - p[0]) * Math.cos((q[1] * Math.PI) / 180), r[1] - p[1]) * 180) / Math.PI;
+    f.push({ type: 'Feature', properties: { day: s.day, bearing }, geometry: { type: 'Point', coordinates: q } });
+  }
+  return { type: 'FeatureCollection', features: f };
+}
+
 function pointsData(items: { p: Point; props: Record<string, unknown> }[]): FeatureCollection<GeoPoint> {
   return {
     type: 'FeatureCollection',
@@ -174,31 +197,27 @@ type Paint = [string, string, unknown][];
 const lit = (v: number[]) => ['literal', v];
 const MODERN: Paint = [
   ['route-later', 'line-color', FOG], ['route-later', 'line-width', 1.5], ['route-later', 'line-opacity', 0.55], ['route-later', 'line-dasharray', [1, 2.5]],
-  ['route-casing', 'line-color', NIGHT], ['route-casing', 'line-width', ['match', ['get', 'mode'], 'trek', 7, 6]], ['route-casing', 'line-opacity', 0.55], ['route-casing', 'line-blur', 1.5],
+  ['route-casing', 'line-color', NIGHT], ['route-casing', 'line-width', ['match', ['get', 'mode'], 'trek', 7, 'drive', 3.6, 5]], ['route-casing', 'line-opacity', 0.55], ['route-casing', 'line-blur', 1.5],
   ['route-done', 'line-color', ['match', ['get', 'mode'], 'ferry', BERRY, 'trek', CORAL, 'scenic', MINT, ICE]],
-  ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.8, 'scenic', 3.4, 2.8]],
-  ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'scenic', lit([2.2, 1.4]), lit([1, 0])]],
-  ['route-flight', 'line-color', BERRY], ['route-flight', 'line-width', 2.2], ['route-flight', 'line-dasharray', [2, 2]],
-  ['pins-later', 'circle-color', NIGHT], ['pins-later', 'circle-stroke-color', FOG], ['pins-later', 'circle-radius', 4.5],
-  ['pins-done', 'circle-color', ICE], ['pins-done', 'circle-stroke-color', NIGHT], ['pins-done', 'circle-radius', 4.5],
+  ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.8, 'scenic', 3.4, 'ferry', 2.4, 1.6]],
+  ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'scenic', lit([2.2, 1.4]), 'ferry', lit([1, 1.6]), 'trek', lit([1, 0]), lit([2.4, 1.5])]],
+  ['route-flight', 'line-color', BERRY], ['route-flight', 'line-width', 1.1], ['route-flight', 'line-dasharray', [3, 2.4]],
   ['trail-all-line', 'line-color', AMBER], ['trail-all-line', 'line-opacity', 0.55],
   ['trail-casing', 'line-color', NIGHT], ['trail-casing', 'line-width', 8], ['trail-casing', 'line-opacity', 0.7], ['trail-casing', 'line-blur', 1],
   ['trail-line', 'line-color', AMBER], ['trail-line', 'line-width', 3.8], ['trail-line', 'line-dasharray', [1, 0]],
-  ['site-dots', 'circle-stroke-color', NIGHT], ['poi-dots', 'circle-stroke-color', NIGHT],
+ 
 ];
 const WEST: Paint = [
   ['route-later', 'line-color', INK], ['route-later', 'line-width', 2.4], ['route-later', 'line-opacity', 0.8], ['route-later', 'line-dasharray', [0.2, 2.6]],
-  ['route-casing', 'line-color', INK], ['route-casing', 'line-width', ['match', ['get', 'mode'], 'trek', 6.4, 5.6]], ['route-casing', 'line-opacity', 0.92], ['route-casing', 'line-blur', 0],
+  ['route-casing', 'line-color', ['match', ['get', 'mode'], 'drive', CREAM, INK]], ['route-casing', 'line-width', ['match', ['get', 'mode'], 'trek', 6.4, 'drive', 3.8, 5]], ['route-casing', 'line-opacity', ['match', ['get', 'mode'], 'drive', 0.6, 0.92]], ['route-casing', 'line-blur', 0],
   ['route-done', 'line-color', ['match', ['get', 'mode'], 'ferry', BLUE, 'trek', RUST, 'scenic', GREEN, RED]],
-  ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.6, 'scenic', 3.2, 3]],
-  ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'ferry', lit([1, 1.7]), 'scenic', lit([2.2, 1.4]), 'trek', lit([1, 0]), lit([2.6, 1.1])]],
-  ['route-flight', 'line-color', BLUE], ['route-flight', 'line-width', 2.8], ['route-flight', 'line-dasharray', [0.2, 2.4]],
-  ['pins-later', 'circle-color', CREAM], ['pins-later', 'circle-stroke-color', INK], ['pins-later', 'circle-radius', 5],
-  ['pins-done', 'circle-color', RED], ['pins-done', 'circle-stroke-color', INK], ['pins-done', 'circle-radius', 6],
+  ['route-done', 'line-width', ['match', ['get', 'mode'], 'trek', 3.6, 'scenic', 3.2, 'ferry', 2.6, 1.7]],
+  ['route-done', 'line-dasharray', ['match', ['get', 'mode'], 'ferry', lit([1, 1.7]), 'scenic', lit([2.2, 1.4]), 'trek', lit([1, 0]), lit([2.6, 1.6])]],
+  ['route-flight', 'line-color', RED], ['route-flight', 'line-width', 1.3], ['route-flight', 'line-dasharray', [3, 2.2]],
   ['trail-all-line', 'line-color', GREEN], ['trail-all-line', 'line-opacity', 0.8],
   ['trail-casing', 'line-color', INK], ['trail-casing', 'line-width', 7], ['trail-casing', 'line-opacity', 0.92], ['trail-casing', 'line-blur', 0],
   ['trail-line', 'line-color', GREEN], ['trail-line', 'line-width', 3.4], ['trail-line', 'line-dasharray', [1.6, 1]],
-  ['site-dots', 'circle-stroke-color', INK], ['poi-dots', 'circle-stroke-color', INK],
+ 
 ];
 function applyLook(map: maplibregl.Map, west: boolean) {
   for (const [layer, prop, value] of west ? WEST : MODERN) {
@@ -208,7 +227,13 @@ function applyLook(map: maplibregl.Map, west: boolean) {
       /* a layer that is not there yet */
     }
   }
-  for (const l of ['route-later', 'route-flight']) {
+  const look = west ? 'w' : 'm';
+  for (const l of ['site-dots', 'poi-dots']) map.setLayoutProperty(l, 'icon-image', ['concat', 'cat-', ['get', 'cat'], '-' + look]);
+  map.setLayoutProperty('pins-done', 'icon-image', 'stop-done-' + look);
+  map.setLayoutProperty('pins-later', 'icon-image', 'stop-later-' + look);
+  map.setLayoutProperty('ports', 'icon-image', ['concat', 'port-', ['get', 'kind'], '-' + look]);
+  map.setLayoutProperty('planes', 'icon-image', 'plane-' + look);
+  for (const l of ['route-later']) {
     try {
       map.setLayoutProperty(l, 'line-cap', west ? 'round' : 'butt');
     } catch {
@@ -307,11 +332,15 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
     mapRef.current = map;
+    if (location.search.includes('debugmap')) (window as unknown as { __tlmap: unknown }).__tlmap = map;
 
-    map.on('load', () => {
+    map.on('load', async () => {
+      addEmblems(map);
       map.addSource('route', { type: 'geojson', data: routeData(segs) });
       map.addSource('pins', { type: 'geojson', data: pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))) });
       map.addSource('poidots', { type: 'geojson', data: dots(pois) });
+      map.addSource('ports', { type: 'geojson', data: portsData(segs) });
+      map.addSource('planes', { type: 'geojson', data: planesData(segs) });
       map.addSource('trail', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('trail-all', { type: 'geojson', data: allTrails });
       map.addSource('sitedots', { type: 'geojson', data: pointsData(allSites) });
@@ -330,31 +359,17 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         },
       });
       map.addLayer({ id: 'route-flight', type: 'line', source: 'route', paint: { 'line-color': BERRY, 'line-width': 2.2, 'line-dasharray': [2, 2] } });
-      map.addLayer({ id: 'pins-later', type: 'circle', source: 'pins', paint: { 'circle-radius': 4.5, 'circle-color': NIGHT, 'circle-stroke-color': FOG, 'circle-stroke-width': 1.5 } });
-      map.addLayer({ id: 'pins-done', type: 'circle', source: 'pins', paint: { 'circle-radius': 4.5, 'circle-color': ICE, 'circle-stroke-color': NIGHT, 'circle-stroke-width': 1.5 } });
+      const sz = (a: number, b: number, c: number, d: number) => ['interpolate', ['linear'], ['zoom'], 3, a, 6, b, 9, c, 12, d] as maplibregl.ExpressionSpecification;
+      const icon = { 'icon-allow-overlap': true, 'icon-ignore-placement': true } as const;
+      map.addLayer({ id: 'pins-later', type: 'symbol', source: 'pins', layout: { ...icon, 'icon-image': 'stop-later-m', 'icon-size': sz(0.22, 0.3, 0.4, 0.5) }, paint: { 'icon-opacity': 0.75 } });
+      map.addLayer({ id: 'pins-done', type: 'symbol', source: 'pins', layout: { ...icon, 'icon-image': 'stop-done-m', 'icon-size': sz(0.24, 0.34, 0.44, 0.55) } });
       map.addLayer({ id: 'trail-all-line', type: 'line', source: 'trail-all', layout: round, paint: { 'line-color': AMBER, 'line-width': 2.4, 'line-opacity': 0.55 } });
       map.addLayer({ id: 'trail-casing', type: 'line', source: 'trail', layout: round, paint: { 'line-color': NIGHT, 'line-width': 8, 'line-opacity': 0.7, 'line-blur': 1 } });
       map.addLayer({ id: 'trail-line', type: 'line', source: 'trail', layout: round, paint: { 'line-color': AMBER, 'line-width': 3.8 } });
-      map.addLayer({
-        id: 'site-dots',
-        type: 'circle',
-        source: 'sitedots',
-        minzoom: 3,
-        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 6, 3.4, 12, 6.5], 'circle-color': dotColor, 'circle-stroke-color': NIGHT, 'circle-stroke-width': 1.6 },
-      });
-      map.addLayer({
-        id: 'poi-dots',
-        type: 'circle',
-        source: 'poidots',
-        minzoom: 3,
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 2.2, 6, 3, 12, 6],
-          'circle-color': dotColor,
-          'circle-stroke-color': NIGHT,
-          'circle-stroke-width': 1.6,
-          'circle-opacity': 0.9,
-        },
-      });
+      map.addLayer({ id: 'site-dots', type: 'symbol', source: 'sitedots', minzoom: 3, layout: { ...icon, 'icon-image': ['concat', 'cat-', ['get', 'cat'], '-m'], 'icon-size': sz(0.2, 0.32, 0.46, 0.7) } });
+      map.addLayer({ id: 'poi-dots', type: 'symbol', source: 'poidots', minzoom: 3, layout: { ...icon, 'icon-image': ['concat', 'cat-', ['get', 'cat'], '-m'], 'icon-size': sz(0.18, 0.28, 0.42, 0.65) } });
+      map.addLayer({ id: 'ports', type: 'symbol', source: 'ports', layout: { ...icon, 'icon-image': ['concat', 'port-', ['get', 'kind'], '-m'], 'icon-size': sz(0.28, 0.36, 0.46, 0.56) } });
+      map.addLayer({ id: 'planes', type: 'symbol', source: 'planes', layout: { ...icon, 'icon-image': 'plane-m', 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-size': sz(0.8, 0.95, 1.05, 1.15) } });
 
       // tapping a place or a trail opens its name and details
       const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '280px', offset: 14, className: 'tl-popup' });
@@ -469,6 +484,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     const map = mapRef.current;
     if (!ready || !map) return;
     (map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(routeData(segs));
+    (map.getSource('ports') as maplibregl.GeoJSONSource | undefined)?.setData(portsData(segs));
+    (map.getSource('planes') as maplibregl.GeoJSONSource | undefined)?.setData(planesData(segs));
     (map.getSource('pins') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(pins.map(({ p, first }) => ({ p, props: { first } }))));
     (map.getSource('poidots') as maplibregl.GeoJSONSource | undefined)?.setData(dots(pois));
     (map.getSource('sitedots') as maplibregl.GeoJSONSource | undefined)?.setData(pointsData(allSites));
@@ -573,6 +590,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     map.setFilter('route-casing', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight']]);
     map.setFilter('route-done', ['all', ['<=', ['get', 'day'], upTo], ['!=', ['get', 'mode'], 'flight']]);
     map.setFilter('route-flight', ['all', ['<=', ['get', 'day'], upTo], ['==', ['get', 'mode'], 'flight']]);
+    map.setFilter('ports', ['<=', ['get', 'day'], upTo]);
+    map.setFilter('planes', ['<=', ['get', 'day'], upTo]);
     map.setFilter('pins-later', ['>', ['get', 'first'], upTo]);
     map.setFilter('pins-done', ['<=', ['get', 'first'], upTo]);
     map.setFilter('site-dots', showAll ? null : ['!=', ['get', 'date'], day.date]);
