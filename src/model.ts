@@ -39,6 +39,8 @@ export interface Leg {
   note?: string;
   fromPoint?: Point;
   toPoint?: Point;
+  /** The road the drive follows, as [lon, lat] pairs, found when the start and end were set. */
+  path?: [number, number][];
 }
 
 interface EntryBase {
@@ -79,6 +81,8 @@ export interface HikeEntry extends EntryBase {
   shape?: 'out-and-back' | 'loop' | 'circuit' | 'one-way';
   guided?: boolean;
   options?: HikeOption[];
+  /** Points you put in by hand, in walking order. */
+  waypoints?: { name: string; point: Point }[];
 }
 
 export interface ExperienceEntry extends EntryBase {

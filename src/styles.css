@@ -382,3 +382,14 @@ ul, ol { list-style: none; }
 .offline-bar { height: 6px; border-radius: 3px; background: var(--ink-2); overflow: hidden; }
 .offline-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
 .offline-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.map-pick { display: grid; gap: 4px; margin-top: 8px; }
+.map-pick-canvas { height: 280px; border-radius: 12px; overflow: hidden; }
+.seg-switch { display: flex; gap: 6px; }
+.seg-switch .chip { flex: 1; justify-content: center; }
+.wp-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.wp-list li { display: flex; gap: 6px; align-items: center; }
+.wp-list li > b { width: 22px; text-align: center; color: var(--accent); }
+.wp-list input { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 10px; padding: 7px 10px; }
+.drive-leg { display: grid; gap: 8px; padding: 10px; border-radius: 14px; background: var(--ink-2); }
+.drive-leg .road { font-size: 13px; color: var(--accent); }
+.drive-leg .pinned { font-size: 13px; color: var(--fog); }
