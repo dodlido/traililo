@@ -138,7 +138,6 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
           current={current}
           anchor={anchor}
           plan={plan}
-          pickable={mapOpen}
           results={res ?? undefined}
           onPick={(n, p) => {
             onPick(n, p);
