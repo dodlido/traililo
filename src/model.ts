@@ -205,6 +205,8 @@ export interface RouteLine {
   points: Point[];
   /** Replaces the plain line between that day's two overnight places. */
   replace?: boolean;
+  /** The road or ferry line has been looked up (or looked for), so it is not asked for again. */
+  routed?: boolean;
 }
 
 export interface Trip {
