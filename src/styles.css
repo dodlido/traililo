@@ -515,6 +515,7 @@ html[data-map-base='west'] .map-day button:not(:disabled):active { background: r
 .plan-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; margin: 0; color: #c6d6d8; }
 .plan-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .plan-dot-key { flex: none; width: 10px; height: 10px; min-height: 0; max-height: 10px; padding: 0; height: 10px; border-radius: 50%; border: 1.5px solid #2a170a; display: inline-block; }
-/* tonight's bed: a deeper shade so it stands out from the other beds */
-.map .pin.stay.tonight .disc { background: color-mix(in srgb, var(--c) 58%, #000); border-color: #fff; }
-html[data-map-base='west'] .map .pin.stay.tonight .disc { background: #c98a3a; border-color: var(--inkb); box-shadow: 2px 3px 0 var(--inkb), inset 0 -5px 0 var(--redb); }
+/* tonight's bed: the same purple shield, just deeper, so it stands out from the other beds */
+.map .pin.stay.tonight .disc { background: color-mix(in srgb, var(--c) 62%, #000); }
+html[data-map-base='west'] .map .pin.stay.tonight .disc { background: color-mix(in srgb, var(--c) 55%, #1a0f2a); box-shadow: 2px 3px 0 var(--inkb), inset 0 -5px 0 color-mix(in srgb, var(--c) 30%, #000); }
+html[data-map-base='west'] .map .pin.stay.tonight .disc svg, html[data-map-base='west'] .map .pin.stay.tonight .disc svg path { color: var(--paper); stroke: var(--paper); }
