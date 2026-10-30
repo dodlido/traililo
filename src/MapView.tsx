@@ -61,7 +61,7 @@ function segmentsOf(trip: Trip): Seg[] {
     const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
     const legs = commute?.legs ?? [];
     // legs with a start and end of their own (and a road, for drives) are drawn as they are
-    if (legs.length > 0 && legs.every((l) => l.fromPoint && l.toPoint) && (legs.length > 1 || legs[0].path)) {
+    if (legs.length > 0 && legs.every((l) => l.fromPoint && l.toPoint)) {
       for (const l of legs) {
         const pts = l.path ? l.path.map(([lon, lat]) => ({ lon, lat })) : [l.fromPoint!, l.toPoint!];
         segs.push({ pts, mode: l.mode === 'ferry' ? 'ferry' : l.mode === 'flight' ? 'flight' : 'drive', day: i });
