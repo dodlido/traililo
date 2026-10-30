@@ -12,6 +12,7 @@ import type { Bundle } from './backend.ts';
 import { OfflineCard } from './OfflineCard.tsx';
 import { Plan } from './Plan.tsx';
 import { JournalBlock, JournalEditor } from './Journal.tsx';
+import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, saveTrip } from './backend.ts';
@@ -305,6 +306,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'settings' && (
         <SettingsEditor
@@ -587,7 +589,7 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
 }
 
 function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: boolean }) {
-  const { staysById, sheet, owner, editing, openSheet, mutate, trip } = useT();
+  const { staysById, sheet, owner, editing, openSheet, mutate, trip, tracks } = useT();
   const today = useContext(TodayCtx)!;
   const isToday = today.state === 'during' && trip_dayIs(today, day.date);
   const [newTodo, setNewTodo] = useState('');
@@ -595,7 +597,8 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
   const stay = day.stayId ? staysById.get(day.stayId) : undefined;
   const shownWarnings = new Set(day.entries.flatMap((e) => e.warnings));
   const todos = shared ? [] : day.todos.filter((td) => !shownWarnings.has(td.text));
-  const nothing = day.entries.length === 0 && todos.length === 0;
+  const dayLines = (trip.lines ?? []).filter((l) => l.date === day.date);
+  const nothing = day.entries.length === 0 && todos.length === 0 && dayLines.length === 0;
   return (
     <li className={`day${active ? ' is-active' : ''}${isToday ? ' is-today' : ''}`} id={`day-${day.date}`}>
       <div className="day-head">
@@ -615,6 +618,9 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         <DayWeather trip={trip} day={day} />
         {day.entries.map((e, i) => (
           <EntryView key={e.id} entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
+        ))}
+        {dayLines.map((l) => (
+          <LineRow key={l.id} line={l} hidden={l.mode === 'trek' && !l.stops && day.entries.some((e) => e.kind === 'hike' && !!tracks[e.id])} canEdit={canEdit} onEdit={() => openSheet({ type: 'line', date: day.date, id: l.id })} />
         ))}
         {nothing && <p className="empty">Nothing planned yet.</p>}
         {(todos.length > 0 || canEdit) && !shared && (

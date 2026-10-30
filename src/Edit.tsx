@@ -16,6 +16,7 @@ export type SheetState =
   | { type: 'stay'; id?: string; date?: string }
   | { type: 'day'; date: string }
   | { type: 'journal'; date: string }
+  | { type: 'line'; date: string; id?: string }
   | { type: 'settings' };
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
@@ -175,6 +176,10 @@ export function AddMenu({ date, open, onClose }: { date: string; open: (s: Sheet
             <span>{i.label}</span>
           </button>
         ))}
+        <button type="button" onClick={() => open({ type: 'line', date })}>
+          <Icon name="map" size={26} />
+          <span>Route on map</span>
+        </button>
         <button type="button" onClick={() => open({ type: 'stay', date })}>
           <Icon name="bed" size={26} />
           <span>Place to sleep</span>
