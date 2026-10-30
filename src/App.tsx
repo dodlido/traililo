@@ -32,7 +32,7 @@ interface TripData {
   editing: boolean;
   openSheet: (s: SheetState) => void;
   mutate: (fn: (t: Trip) => void) => Promise<void>;
-  setTrack: (id: string, track: Tracks[string] | null, gain?: number) => Promise<void>;
+  setTrack: (id: string, track: Tracks[string] | null, gain?: number, mode?: 'file' | 'fill') => Promise<void>;
 }
 const TripCtx = createContext<TripData>(null as unknown as TripData);
 const useT = () => useContext(TripCtx);
@@ -101,7 +101,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     return p as Promise<void>;
   };
   // a drawn trail for a hike: kept with the trip, saved with it, and undone if the save fails
-  const setTrack = async (id: string, track: Tracks[string] | null, gain?: number) => {
+  const setTrack = async (id: string, track: Tracks[string] | null, gain?: number, mode: 'file' | 'fill' = 'fill') => {
     const before = tracksRef.current;
     const next = { ...before };
     if (track) next[id] = track;
@@ -113,8 +113,14 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
         if (!track) return;
         // a hike with no distance or climb in the sheet takes them from the file
         for (const d of t.days) for (const e of d.entries) if (e.id === id && e.kind === 'hike') {
-          if (e.distanceKm === undefined) e.distanceKm = track.km;
-          if (e.elevationGainM === undefined && gain) e.elevationGainM = gain;
+          if (mode === 'file') {
+            // a new file replaces what the old one gave
+            e.distanceKm = track.km;
+            e.elevationGainM = gain || undefined;
+          } else {
+            if (e.distanceKm === undefined) e.distanceKm = track.km;
+            if (e.elevationGainM === undefined && gain) e.elevationGainM = gain;
+          }
         }
       });
     } catch (e) {
@@ -252,7 +258,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       </section>
       {toast && <div className={toast.bad ? 'toast bad' : 'toast'} role="status">{toast.text}</div>}
       {sheet?.type === 'add' && <AddMenu date={sheet.date} open={setSheet} onClose={() => setSheet(null)} />}
-      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
@@ -650,7 +656,7 @@ function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; 
     setGpxBusy(true);
     try {
       const tr = parseGpx(await file.text(), file.name.replace(/\.gpx$/i, ''));
-      await setTrack(e.id, { lines: tr.lines, km: tr.km, name: tr.name }, tr.gain);
+      await setTrack(e.id, { lines: tr.lines, km: tr.km, name: tr.name }, tr.gain, 'file');
     } catch (err) {
       setGpxError(err instanceof Error ? err.message : 'Could not read that file');
     } finally {

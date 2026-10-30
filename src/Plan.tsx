@@ -6,6 +6,8 @@ import { Icon } from './Icon.tsx';
 import { todayDate } from './today.ts';
 import { adviceFor, placePoint, weatherFor, type WeatherByDate } from './weather.ts';
 import { makePacking } from './packing.ts';
+import { routeRoad } from './roads.ts';
+import type { Point } from './model.ts';
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
 
@@ -52,6 +54,7 @@ export function Plan({ trip, mutate, openDay, base }: { trip: Trip; mutate: Muta
         <p className="page-sub">Only you see this page.</p>
       </header>
       <BookSection trip={trip} mutate={mutate} openDay={openDay} />
+      <RoadSection trip={trip} mutate={mutate} />
       <WeatherSection trip={trip} />
       <PackSection trip={trip} mutate={mutate} />
       <p className="foot-link">
@@ -252,6 +255,85 @@ function PackSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
           </button>
         </>
       )}
+    </section>
+  );
+}
+
+interface Job {
+  date: string;
+  entry: string;
+  leg: number;
+  from: Point;
+  to: Point;
+  label: string;
+}
+/** Drives and bus rides that are still drawn as a straight line between two places. */
+export function roadJobs(trip: Trip): Job[] {
+  const out: Job[] = [];
+  trip.days.forEach((d, i) => {
+    if ((trip.lines ?? []).some((l) => l.date === d.date && l.replace)) return;
+    for (const e of d.entries) {
+      if (e.kind !== 'commute') continue;
+      e.legs.forEach((l, k) => {
+        if (!['drive', 'taxi', 'bus'].includes(l.mode) || l.path) return;
+        const from = l.fromPoint ?? (e.legs.length === 1 ? trip.days[i - 1]?.point : undefined);
+        const to = l.toPoint ?? (e.legs.length === 1 ? d.point : undefined);
+        if (!from || !to || (from.lat === to.lat && from.lon === to.lon)) return;
+        out.push({ date: d.date, entry: e.id, leg: k, from, to, label: `${shortDate(d.date)}: ${l.from ?? ''} to ${l.to ?? ''}`.replace(/ to $/, '') });
+      });
+    }
+  });
+  return out;
+}
+
+function RoadSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
+  const jobs = useMemo(() => roadJobs(trip), [trip]);
+  const [prog, setProg] = useState<number | null>(null);
+  const [failed, setFailed] = useState<string[]>([]);
+  const [msg, setMsg] = useState('');
+  if (jobs.length === 0 && !msg) return null;
+  const go = async () => {
+    setFailed([]);
+    setMsg('');
+    const found: { job: Job; r: Awaited<ReturnType<typeof routeRoad>> }[] = [];
+    const bad: string[] = [];
+    for (let i = 0; i < jobs.length; i++) {
+      setProg(i);
+      try {
+        found.push({ job: jobs[i], r: await routeRoad([jobs[i].from, jobs[i].to]) });
+      } catch {
+        bad.push(jobs[i].label);
+      }
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    setProg(null);
+    setFailed(bad);
+    if (found.length)
+      await mutate((t) => {
+        for (const { job, r } of found) {
+          const e = t.days.find((d) => d.date === job.date)?.entries.find((q) => q.id === job.entry);
+          if (e?.kind !== 'commute') continue;
+          const l = e.legs[job.leg];
+          l.fromPoint = job.from;
+          l.toPoint = job.to;
+          l.path = r.path;
+          if (l.distanceKm === undefined) l.distanceKm = r.km;
+          if (l.durationMin === undefined) l.durationMin = r.min;
+        }
+      }).catch(() => {});
+    setMsg(`${found.length} drawn on real roads${bad.length ? `, ${bad.length} not found` : ''}.`);
+  };
+  return (
+    <section className="plan-block" aria-labelledby="plan-roads">
+      <h2 id="plan-roads">Drives on roads</h2>
+      <p className="plan-note">{jobs.length > 0 ? `${jobs.length} drive${jobs.length === 1 ? ' is' : 's are'} drawn as a straight line. This finds the real road for each one. It needs signal and takes a minute.` : msg}</p>
+      {jobs.length > 0 && (
+        <button type="button" className="chip solid" disabled={prog !== null} onClick={go}>
+          {prog !== null ? `Finding roads… ${prog + 1} of ${jobs.length}` : 'Draw them on roads'}
+        </button>
+      )}
+      {jobs.length > 0 && msg && <p className="plan-note">{msg}</p>}
+      {failed.length > 0 && <p className="plan-note">No road found for: {failed.join('; ')}</p>}
     </section>
   );
 }

@@ -15,7 +15,7 @@ function dist(a: number[], b: number[]) {
 }
 
 /** Ramer-Douglas-Peucker, iterative so a long track cannot overflow the stack. */
-function simplify(pts: number[][], eps: number): number[][] {
+export function simplify(pts: number[][], eps: number): number[][] {
   if (pts.length < 3) return pts;
   const keep = new Uint8Array(pts.length);
   keep[0] = keep[pts.length - 1] = 1;

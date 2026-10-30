@@ -2,7 +2,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { searchPlace, type Found } from './geocode.ts';
+import { MapPick } from './Pick.tsx';
+import { routeRoad } from './roads.ts';
+import { parseGpx, type ParsedTrack } from './gpx.ts';
+import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
+import { minutes } from './derive.ts';
 
 export type SheetState =
   | { type: 'add'; date: string }
@@ -86,8 +91,9 @@ export function useSave(mutate: Mutate, onClose: () => void) {
   return { busy, error, run };
 }
 
-export function PlaceSearch({ onPick, current, onClear }: { onPick: (name: string, p: Point) => void; current?: Point; onClear: () => void }) {
+export function PlaceSearch({ onPick, current, onClear, near, keepOpen }: { onPick: (name: string, p: Point) => void; current?: Point; onClear: () => void; near?: Point; keepOpen?: boolean }) {
   const [q, setQ] = useState('');
+  const [mapOpen, setMapOpen] = useState(false);
   const [res, setRes] = useState<Found[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,7 +123,9 @@ export function PlaceSearch({ onPick, current, onClear }: { onPick: (name: strin
           }}
         />
         <button type="button" className="chip" onClick={go} disabled={busy}>{busy ? '…' : 'Find'}</button>
+        <button type="button" className={mapOpen ? 'chip is-on' : 'chip'} aria-pressed={mapOpen} onClick={() => setMapOpen(!mapOpen)}>Map</button>
       </div>
+      {mapOpen && <MapPick near={near} current={current} onPick={(n, p) => { onPick(n, p); if (!keepOpen) setMapOpen(false); }} />}
       {current && (
         <p className="small">
           Pinned at {current.lat.toFixed(3)}, {current.lon.toFixed(3)}{' '}
@@ -179,13 +187,33 @@ export function AddMenu({ date, open, onClose }: { date: string; open: (s: Sheet
 
 const MODES: TransportMode[] = ['flight', 'bus', 'drive', 'ferry', 'taxi'];
 
-export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: Trip; mutate: Mutate; date: string; id?: string; kind?: Entry['kind']; onClose: () => void }) {
+export type SetTrack = (id: string, track: Tracks[string] | null, gain?: number, mode?: 'file' | 'fill') => Promise<void>;
+
+const fromUrl = (u: string) => {
+  try {
+    const last = new URL(u).pathname.split('/').filter(Boolean).pop() ?? '';
+    return decodeURIComponent(last).replace(/-t\d+$/, '').replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase()).trim();
+  } catch {
+    return '';
+  }
+};
+const goodUrl = (u: string, host: RegExp) => {
+  try {
+    const x = new URL(u);
+    return /^https?:$/.test(x.protocol) && host.test(x.hostname);
+  } catch {
+    return false;
+  }
+};
+const flat = (a: Point, b: Point) => Math.hypot((b.lon - a.lon) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180), (b.lat - a.lat) * 110.57);
+
+export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }: { trip: Trip; mutate: Mutate; setTrack: SetTrack; date: string; id?: string; kind?: Entry['kind']; onClose: () => void }) {
   const existing = useMemo(() => (id ? trip.days.find((d) => d.date === date)?.entries.find((e) => e.id === id) : undefined), [trip, date, id]);
   const base: Entry = useMemo(
     () =>
       existing
         ? structuredClone(existing)
-        : ({ id: `${date}-n${rid()}`, kind: kind ?? 'note', title: '', notes: [], warnings: [], links: [], ...(kind === 'commute' ? { legs: [{ mode: 'bus' }] } : {}) } as Entry),
+        : ({ id: `${date}-n${rid()}`, kind: kind ?? 'note', title: '', notes: [], warnings: [], links: [], ...(kind === 'commute' ? { legs: [{ mode: 'drive' }] } : {}) } as Entry),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -197,6 +225,15 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
   const [day, setDay] = useState(date);
   const [err, setErr] = useState<string | null>(null);
   const { busy, error, run } = useSave(mutate, onClose);
+  const [own, setOwn] = useState(false);
+  const [hmode, setHmode] = useState<'link' | 'manual'>('link');
+  const [gpx, setGpx] = useState<ParsedTrack | null>(null);
+  const [gpxErr, setGpxErr] = useState('');
+  const [alltrails, setAlltrails] = useState('');
+  const [gyg, setGyg] = useState('');
+  const [wps, setWps] = useState<{ name: string; point: Point }[]>((base as HikeEntry).waypoints ?? []);
+  const [routing, setRouting] = useState<number | null>(null);
+  const [roadErr, setRoadErr] = useState('');
   const up = (patch: Record<string, unknown>) => setD((p) => ({ ...p, ...patch }) as Entry);
   const h = d as HikeEntry;
   const x = d as ExperienceEntry;
@@ -210,18 +247,82 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
   const dayEntries = trip.days.find((dd) => dd.date === date)?.entries ?? [];
   const pos = dayEntries.findIndex((e) => e.id === id);
 
-  const save = () => {
-    if (!d.title.trim() && d.kind !== 'commute') return setErr('Give it a name first.');
+  const quick = d.kind === 'hike' && isNew && hmode === 'link';
+  const driveLegs = d.kind === 'commute' ? (c.legs ?? []).filter((l) => l.mode === 'drive') : [];
+  const pickLeg = async (i: number, side: 'from' | 'to', name: string, pt: Point) => {
+    const cur = c.legs[i];
+    const next = { ...cur, [side]: name.split(',')[0].trim(), [side === 'from' ? 'fromPoint' : 'toPoint']: pt, path: undefined } as Leg;
+    setRoadErr('');
+    setD((p) => ({ ...p, legs: (p as CommuteEntry).legs.map((q, j) => (j === i ? next : q)) }) as Entry);
+    if (!(next.fromPoint && next.toPoint)) return;
+    setRouting(i);
+    try {
+      const r = await routeRoad([next.fromPoint, next.toPoint]);
+      setD((p) => ({ ...p, legs: (p as CommuteEntry).legs.map((q, j) => (j === i ? { ...q, path: r.path, distanceKm: r.km, durationMin: r.min } : q)) }) as Entry);
+    } catch (e) {
+      setRoadErr(e instanceof Error ? e.message : 'Could not find the road');
+    }
+    setRouting(null);
+  };
+  const loadGpx = async (f: File | undefined) => {
+    if (!f) return;
+    setGpxErr('');
+    try {
+      setGpx(parseGpx(await f.text(), f.name.replace(/\.gpx$/i, '')));
+    } catch (e) {
+      setGpx(null);
+      setGpxErr(e instanceof Error ? e.message : 'Could not read that file');
+    }
+  };
+  const moveWp = (i: number, dir: -1 | 1) => setWps((w) => { const n = [...w]; const j = i + dir; if (j < 0 || j >= n.length) return w; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  const wpKm = wps.reduce((n, w, i) => (i ? n + flat(wps[i - 1].point, w.point) : 0), 0);
+
+  const save = async () => {
     setErr(null);
+    if (quick) {
+      const at = alltrails.trim();
+      const gg = gyg.trim();
+      if (!gpx && !at && !gg) return setErr('Add a GPX file, an AllTrails link or a GetYourGuide link.');
+      if (at && !goodUrl(at, /(^|\.)alltrails\.com$/i)) return setErr('That does not look like an AllTrails link.');
+      if (gg && !goodUrl(gg, /(^|\.)getyourguide\.[a-z.]+$/i)) return setErr('That does not look like a GetYourGuide link.');
+      const first = gpx?.lines[0]?.[0];
+      const out = {
+        ...d,
+        title: gpx?.name || fromUrl(at) || fromUrl(gg) || (at ? 'AllTrails hike' : 'Guided hike'),
+        notes: lines(notes),
+        links: [...(at ? [{ type: 'alltrails' as const, label: 'AllTrails', url: at }] : []), ...(gg ? [{ type: 'getyourguide' as const, label: 'GetYourGuide', url: gg }] : [])],
+        guided: gg ? true : undefined,
+        distanceKm: gpx?.km,
+        elevationGainM: gpx?.gain,
+        at: first ? { lon: first[0], lat: first[1] } : undefined,
+      } as Entry;
+      setOwn(true);
+      try {
+        await mutate((t) => { t.days.find((dd) => dd.date === date)!.entries.push(out); });
+        if (gpx) await setTrack(out.id, { lines: gpx.lines, km: gpx.km, name: gpx.name }, gpx.gain, 'file');
+        onClose();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Could not save.');
+      }
+      setOwn(false);
+      return;
+    }
+    if (!d.title.trim() && d.kind !== 'commute') return setErr('Give it a name first.');
+    if (d.kind === 'commute') {
+      for (const l of c.legs ?? []) if (l.mode === 'drive' && !(l.fromPoint && l.toPoint && l.path)) return setErr('Pick a start and an end for each drive, so the road can be found.');
+    }
+    const hadWps = ((existing as HikeEntry | undefined)?.waypoints?.length ?? 0) > 0;
+    const track = d.kind === 'hike' && wps.length >= 2 ? { lines: [wps.map((w) => [w.point.lon, w.point.lat])], km: Math.round(wpKm * 10) / 10, name: d.title.trim() } : null;
     const out: Entry = {
       ...d,
-      title: d.title.trim() || (c.legs?.[0] ? `${c.legs[0].mode} ${c.legs[0].from ?? ''} to ${c.legs[0].to ?? ''}`.trim() : 'Getting there'),
+      ...(d.kind === 'hike' ? { waypoints: wps.length ? wps : undefined, ...(wps.length && !d.at ? { at: wps[0].point } : {}), ...(track && h.distanceKm === undefined ? { distanceKm: track.km } : {}) } : {}),
+      title: d.title.trim() || (c.legs?.[0] ? `${c.legs[0].mode === 'drive' ? 'Drive' : c.legs[0].mode} ${c.legs[0].from ?? ''} to ${c.legs[0].to ?? ''}`.trim() : 'Getting there'),
       notes: lines(notes),
       warnings: lines(warn),
       privateNotes: lines(priv),
       links: links.filter((l) => l.label.trim() || l.url).map((l) => ({ ...l, label: l.label.trim() || l.url || 'Link', url: l.url?.trim() || undefined })),
     };
-    run((t) => {
+    const apply = (t: Trip) => {
       const from = t.days.find((dd) => dd.date === date)!;
       const to = t.days.find((dd) => dd.date === day)!;
       if (existing && date === day) from.entries = from.entries.map((e) => (e.id === out.id ? out : e));
@@ -229,7 +330,18 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
         from.entries = from.entries.filter((e) => e.id !== out.id);
         to.entries.push(out);
       }
-    });
+    };
+    if (d.kind === 'hike' && (track || hadWps)) {
+      setOwn(true);
+      try {
+        await mutate(apply);
+        await setTrack(out.id, track, undefined, 'fill');
+        onClose();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Could not save.');
+      }
+      setOwn(false);
+    } else run(apply);
   };
   const remove = () =>
     run((t) => {
@@ -248,12 +360,52 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
   const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note' }[d.kind];
   return (
     <Sheet title={isNew ? `New ${kindLabel}` : `Edit ${kindLabel}`} onClose={onClose}>
+      {d.kind === 'hike' && isNew && (
+        <div className="seg-switch" role="radiogroup" aria-label="How to add this hike">
+          <button type="button" role="radio" aria-checked={hmode === 'link'} className={hmode === 'link' ? 'chip is-on' : 'chip'} onClick={() => setHmode('link')}>From a link or file</button>
+          <button type="button" role="radio" aria-checked={hmode === 'manual'} className={hmode === 'manual' ? 'chip is-on' : 'chip'} onClick={() => setHmode('manual')}>Enter it myself</button>
+        </div>
+      )}
+      {quick && (
+        <>
+          <Field label="GPX file" hint="Exported from AllTrails, Komoot, Garmin or similar. Distance and climb come from the file.">
+            <input type="file" accept=".gpx,application/gpx+xml,application/octet-stream,text/xml,application/xml" onChange={(e) => void loadGpx(e.target.files?.[0])} />
+            {gpx && <p className="small">{gpx.name} · {gpx.km} km{gpx.gain !== undefined ? ` · +${gpx.gain} m` : ''}</p>}
+            {gpxErr && <p className="auth-error">{gpxErr}</p>}
+          </Field>
+          <Field label="AllTrails link" hint="Optional. Kept as a link for now.">
+            <input inputMode="url" placeholder="https://www.alltrails.com/trail/…" value={alltrails} onChange={(e) => setAlltrails(e.target.value)} />
+          </Field>
+          <Field label="GetYourGuide link" hint="Optional, for a guided hike. Kept as a link for now.">
+            <input inputMode="url" placeholder="https://www.getyourguide.com/…" value={gyg} onChange={(e) => setGyg(e.target.value)} />
+          </Field>
+          <Field label="Notes" hint="One per line. Friends see these."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          <Actions onSave={save} busy={busy || own} error={err ?? error} />
+        </>
+      )}
+      {!quick && (
+      <>
       <Field label={d.kind === 'commute' ? 'Title (optional)' : 'Name'}>
         <input value={d.title} onChange={(e) => up({ title: e.target.value })} autoFocus={isNew} />
       </Field>
 
       {d.kind === 'hike' && (
         <>
+          <Field label="Points on the trail" hint="Search or tap the map to add points, then put them in walking order. They are drawn as a line on the map.">
+            <ul className="wp-list">
+              {wps.map((w, i) => (
+                <li key={i}>
+                  <b>{i + 1}</b>
+                  <input value={w.name} aria-label={`Point ${i + 1} name`} onChange={(e) => setWps(wps.map((q, j) => (j === i ? { ...q, name: e.target.value } : q)))} />
+                  <button type="button" className="round small" aria-label="Move up" disabled={i === 0} onClick={() => moveWp(i, -1)}><Icon name="back" size={14} /></button>
+                  <button type="button" className="round small" aria-label="Move down" disabled={i === wps.length - 1} onClick={() => moveWp(i, 1)}><Icon name="next" size={14} /></button>
+                  <button type="button" className="round small" aria-label="Remove point" onClick={() => setWps(wps.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                </li>
+              ))}
+            </ul>
+            {wps.length >= 2 && <p className="small">{wps.length} points · about {Math.round(wpKm * 10) / 10} km in straight lines</p>}
+            <PlaceSearch keepOpen near={wps[wps.length - 1]?.point} onClear={() => {}} onPick={(name, p) => setWps((w) => [...w, { name: name.split(',')[0].trim(), point: p }])} />
+          </Field>
           <div className="two">
             <Field label="Distance (km)"><input type="number" step="0.1" inputMode="decimal" value={h.distanceKm ?? ''} onChange={(e) => up({ distanceKm: num(e.target.value) })} /></Field>
             <Field label="Climb (m)"><input type="number" inputMode="numeric" value={h.elevationGainM ?? ''} onChange={(e) => up({ elevationGainM: num(e.target.value) })} /></Field>
@@ -294,18 +446,41 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
       {d.kind === 'commute' && (
         <div className="legs-edit">
           <h3>Legs</h3>
-          {(c.legs ?? []).map((l: Leg, i: number) => (
-            <div className="leg-row" key={i}>
-              <select value={l.mode} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, mode: e.target.value as TransportMode } : q)) })}>
+          {(c.legs ?? []).map((l: Leg, i: number) => {
+            const modeSel = (
+              <select value={l.mode} aria-label="How" onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, mode: e.target.value as TransportMode } : q)) })}>
                 {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-              <input placeholder="From" value={l.from ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, from: e.target.value } : q)) })} />
-              <input placeholder="To" value={l.to ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, to: e.target.value } : q)) })} />
-              <input placeholder="min" type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, durationMin: num(e.target.value) } : q)) })} />
-              <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
-            </div>
-          ))}
-          <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'bus' }] })}>+ Add a leg</button>
+            );
+            const remove = <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>;
+            if (l.mode !== 'drive')
+              return (
+                <div className="leg-row" key={i}>
+                  {modeSel}
+                  <input placeholder="From" value={l.from ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, from: e.target.value } : q)) })} />
+                  <input placeholder="To" value={l.to ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, to: e.target.value } : q)) })} />
+                  <input placeholder="min" type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, durationMin: num(e.target.value) } : q)) })} />
+                  {remove}
+                </div>
+              );
+            return (
+              <div className="drive-leg" key={i}>
+                <div className="leg-row">{modeSel}{remove}</div>
+                <Field label="Start (required)">
+                  {l.fromPoint && <p className="pinned">{l.from || 'Pinned spot'}</p>}
+                  <PlaceSearch current={l.fromPoint} near={l.toPoint} onPick={(n, p) => void pickLeg(i, 'from', n, p)} onClear={() => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, fromPoint: undefined, path: undefined } : q)) })} />
+                </Field>
+                <Field label="End (required)">
+                  {l.toPoint && <p className="pinned">{l.to || 'Pinned spot'}</p>}
+                  <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => up({ legs: c.legs.map((q, j) => (j === i ? { ...q, toPoint: undefined, path: undefined } : q)) })} />
+                </Field>
+                {routing === i && <p className="road">Finding the road…</p>}
+                {routing !== i && l.path && <p className="road">By road: {l.distanceKm} km · {minutes(l.durationMin)} (no traffic)</p>}
+                {roadErr && routing !== i && !l.path && <p className="auth-error">{roadErr}</p>}
+              </div>
+            );
+          })}
+          <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'drive' }] })}>+ Add a leg</button>
         </div>
       )}
 
@@ -352,7 +527,9 @@ export function EntryEditor({ trip, mutate, date, id, kind, onClose }: { trip: T
           <button type="button" className="chip" disabled={pos >= dayEntries.length - 1 || busy} onClick={() => move(1)}>Move down</button>
         </div>
       )}
-      <Actions onSave={save} busy={busy} error={err ?? error} onDelete={isNew ? undefined : remove} />
+      <Actions onSave={save} busy={busy || own || routing !== null} error={err ?? error} onDelete={isNew ? undefined : remove} />
+      </>
+      )}
     </Sheet>
   );
 }

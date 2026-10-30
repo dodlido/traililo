@@ -56,13 +56,18 @@ function segmentsOf(trip: Trip): Seg[] {
   days.forEach((d, i) => {
     const mine = (trip.lines ?? []).filter((l) => l.date === d.date);
     for (const l of mine) segs.push({ pts: l.points, mode: l.mode, day: i, name: l.name });
-    if (i === 0 || !d.point || mine.some((l) => l.replace)) return;
+    if (mine.some((l) => l.replace)) return;
     const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
     const legs = commute?.legs ?? [];
-    if (legs.length > 1 && legs.every((l) => l.fromPoint && l.toPoint)) {
-      for (const l of legs) segs.push({ pts: [l.fromPoint!, l.toPoint!], mode: l.mode === 'ferry' ? 'ferry' : 'drive', day: i });
+    // legs with a start and end of their own (and a road, for drives) are drawn as they are
+    if (legs.length > 0 && legs.every((l) => l.fromPoint && l.toPoint) && (legs.length > 1 || legs[0].path)) {
+      for (const l of legs) {
+        const pts = l.path ? l.path.map(([lon, lat]) => ({ lon, lat })) : [l.fromPoint!, l.toPoint!];
+        segs.push({ pts, mode: l.mode === 'ferry' ? 'ferry' : l.mode === 'flight' ? 'flight' : 'drive', day: i });
+      }
       return;
     }
+    if (i === 0 || !d.point) return;
     const prev = days[i - 1].point;
     if (!prev || same(prev, d.point)) return;
     const m = legs[0]?.mode;
