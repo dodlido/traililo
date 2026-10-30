@@ -51,12 +51,14 @@ const lngLat = (p: Point): [number, number] => [p.lon, p.lat];
 const same = (a: Point, b: Point) => a.lat === b.lat && a.lon === b.lon;
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function segmentsOf(trip: Trip): Seg[] {
+function segmentsOf(trip: Trip, tracks: Tracks): Seg[] {
   const days = trip.days;
   const segs: Seg[] = [];
   days.forEach((d, i) => {
+    // a hike with its own drawn trail needs no straight walking line next to it
+    const trailed = d.entries.some((e) => e.kind === 'hike' && tracks[e.id]);
     const mine = (trip.lines ?? []).filter((l) => l.date === d.date);
-    for (const l of mine) segs.push({ pts: l.points, mode: l.mode, day: i, name: l.name });
+    for (const l of mine) if (!(trailed && l.mode === 'trek' && !l.stops)) segs.push({ pts: l.points, mode: l.mode, day: i, name: l.name });
     if (mine.some((l) => l.replace)) return;
     const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
     const legs = commute?.legs ?? [];
@@ -74,6 +76,7 @@ function segmentsOf(trip: Trip): Seg[] {
     if (!prev || same(prev, d.point)) return;
     const m = legs[0]?.mode;
     const mode: Mode = m === 'flight' ? 'flight' : m === 'ferry' ? 'ferry' : m ? 'drive' : d.entries.some((e) => e.kind === 'hike') ? 'trek' : 'drive';
+    if (mode === 'trek' && trailed) return;
     segs.push({ pts: [prev, d.point], mode, day: i });
   });
   return segs;
@@ -307,7 +310,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
   const days = trip.days;
   const pois = trip.pois ?? [];
   const activeIdx = Math.max(0, days.findIndex((d) => d.date === active));
-  const segs = useMemo(() => segmentsOf(trip), [trip]);
+  const segs = useMemo(() => segmentsOf(trip, tracks), [trip, tracks]);
   const pins = useMemo(() => {
     const m = new Map<string, { p: Point; first: number }>();
     days.forEach((d, i) => {

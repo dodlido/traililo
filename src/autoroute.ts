@@ -53,6 +53,7 @@ export function applyRoutes(t: Trip, found: { job: Job; r: Road | null }[]) {
       const ln = t.lines?.find((x) => x.id === job.line);
       if (!ln) continue;
       ln.routed = true;
+      ln.stops ??= [job.from, ...(job.via ?? []), job.to].map((point, i) => ({ name: `Point ${i + 1}`, point }));
       if (r) ln.points = r.path.map(([lon, lat]) => ({ lon, lat }));
       continue;
     }

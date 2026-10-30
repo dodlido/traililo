@@ -492,3 +492,4 @@ html[data-map-base='west'] .map-day button:not(:disabled):active { background: v
 .reorder .arrow-up svg { transform: rotate(90deg); }
 .reorder .arrow-down svg { transform: rotate(-90deg); }
 .reorder .arrow-up, .reorder .arrow-down { display: inline-flex; }
+.facts-line { font-size: 14px; color: #c6d6d8; margin: 2px 0 4px; }
