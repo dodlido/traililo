@@ -20,13 +20,17 @@ export interface TripSummary {
   end_date: string | null;
   cover_region: string;
   owner: boolean;
+  /** How this trip came to you. */
+  role: 'owner' | 'partner' | 'friend';
 }
 export interface Bundle {
   id: string;
   version: number;
   cover: string;
   title: string;
+  /** True for the owner and for travel partners: they see and edit the full version. */
   owner: boolean;
+  role?: 'owner' | 'partner' | 'friend';
   trip: Trip;
   tracks: Tracks;
   report?: ImportReport;
@@ -66,7 +70,17 @@ export async function listTrips(session: Session): Promise<{ trips: TripSummary[
     if (cached) return { trips: cached, offline: true };
     throw error;
   }
-  const trips = (data ?? []).map((r) => ({ id: r.id, title: r.title, start_date: r.start_date, end_date: r.end_date, cover_region: r.cover_region ?? 'Torres del Paine', owner: r.owner_id === uid }));
+  const mine = await sb.from('trip_members').select('trip_id,role').eq('user_id', uid);
+  const roles = new Map<string, string>((mine.data ?? []).map((m) => [m.trip_id as string, m.role as string]));
+  const trips: TripSummary[] = (data ?? []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    start_date: r.start_date,
+    end_date: r.end_date,
+    cover_region: r.cover_region ?? 'Torres del Paine',
+    owner: r.owner_id === uid,
+    role: r.owner_id === uid ? 'owner' : roles.get(r.id) === 'partner' ? 'partner' : 'friend',
+  }));
   cachePut(uid, 'list', trips);
   return { trips, offline: false };
 }
@@ -80,8 +94,14 @@ export async function loadTrip(session: Session, id: string): Promise<{ bundle: 
     throw pub.error ?? new Error('Trip not found');
   }
   const d = pub.data.data as { trip: Trip; tracks: Tracks };
-  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, trip: d.trip, tracks: d.tracks ?? {} };
-  if (pub.data.owner_id === uid) {
+  let role: 'owner' | 'partner' | 'friend' = 'friend';
+  if (pub.data.owner_id === uid) role = 'owner';
+  else {
+    const m = await sb.from('trip_members').select('role').eq('trip_id', id).eq('user_id', uid).maybeSingle();
+    if (m.data?.role === 'partner') role = 'partner';
+  }
+  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, role, trip: d.trip, tracks: d.tracks ?? {} };
+  if (role !== 'friend') {
     const priv = await sb.from('trip_private').select('data').eq('trip_id', id).maybeSingle();
     const p = priv.data?.data as { trip: Trip; report?: ImportReport; sources?: Bundle['sources'] } | undefined;
     if (p) bundle = { ...bundle, owner: true, trip: p.trip, report: p.report, sources: p.sources };
@@ -90,9 +110,28 @@ export async function loadTrip(session: Session, id: string): Promise<{ bundle: 
   return { bundle, offline: false };
 }
 
-export async function shareTrip(tripId: string, email: string): Promise<string | null> {
-  const { error } = await sb.rpc('share_trip', { p_trip: tripId, p_email: email });
+export async function shareTrip(tripId: string, email: string, role: 'friend' | 'partner' = 'friend'): Promise<string | null> {
+  const { error } = await sb.rpc('share_trip', { p_trip: tripId, p_email: email, p_role: role });
   return error ? error.message : null;
+}
+export async function unshareTrip(tripId: string, email: string): Promise<string | null> {
+  const { error } = await sb.rpc('unshare_trip', { p_trip: tripId, p_email: email });
+  return error ? error.message : null;
+}
+export async function listMembers(tripId: string): Promise<{ email: string; role: 'friend' | 'partner' }[]> {
+  const { data, error } = await sb.rpc('list_members', { p_trip: tripId });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as { email: string; role: 'friend' | 'partner' }[];
+}
+
+/** The newest saved copy of a trip, for when someone else saved first. */
+export async function fetchLatest(id: string): Promise<{ version: number; trip: Trip; tracks: Tracks }> {
+  const pub = await sb.from('trips').select('data,version').eq('id', id).single();
+  if (pub.error) throw new Error(pub.error.message);
+  const priv = await sb.from('trip_private').select('data').eq('trip_id', id).single();
+  if (priv.error) throw new Error(priv.error.message);
+  const d = pub.data.data as { trip: Trip; tracks: Tracks };
+  return { version: pub.data.version ?? 1, trip: (priv.data.data as { trip: Trip }).trip, tracks: d.tracks ?? {} };
 }
 
 import { publicVersion } from './privacy.ts';

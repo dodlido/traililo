@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { createTrip, fresh, listTrips, shareTrip, type TripSummary } from './backend.ts';
+import { createTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { THEMES, Scene, themeFor } from './scenes.tsx';
@@ -43,7 +43,14 @@ function TripCard({ t }: { t: TripSummary }) {
   const th = themeFor(t.cover_region);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'friend' | 'partner'>('friend');
   const [msg, setMsg] = useState<string | null>(null);
+  const [members, setMembers] = useState<{ email: string; role: 'friend' | 'partner' }[] | null>(null);
+  const refresh = () => listMembers(t.id).then(setMembers).catch((e) => setMsg(e instanceof Error ? e.message : 'Could not load who has access.'));
+  useEffect(() => {
+    if (open && t.role === 'owner') void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   return (
     <li className="trip-card" style={{ ['--accent' as string]: th.accent }}>
       <a href={`#/trip/${t.id}`} className="trip-card-link">
@@ -51,24 +58,57 @@ function TripCard({ t }: { t: TripSummary }) {
         <div className="trip-card-text">
           <h2>{t.title}</h2>
           {t.start_date && t.end_date && <p>{shortDate(t.start_date)} to {shortDate(t.end_date)}, {t.end_date.slice(0, 4)}</p>}
+          {t.role === 'partner' && <p className="role-tag">You’re a travel partner: you can edit everything</p>}
+          {t.role === 'friend' && <p className="role-tag">Shared with you to view</p>}
         </div>
       </a>
-      {t.owner && (
+      {t.role === 'owner' && (
         <div className="share">
           <button type="button" className="chip" onClick={() => setOpen(!open)}><Icon name="eye" size={16} /> Share</button>
           {open && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const err = await shareTrip(t.id, email.trim());
-                setMsg(err ?? `Shared with ${email.trim()}. They see the friends’ version.`);
-                if (!err) setEmail('');
-              }}
-            >
-              <input type="email" required placeholder="friend’s email (they need an account)" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <button className="auth-primary">Share</button>
-              {msg && <p className="auth-note small">{msg}</p>}
-            </form>
+            <>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const who = email.trim();
+                  const err = await shareTrip(t.id, who, role);
+                  setMsg(err ?? (role === 'partner' ? `${who} is now a travel partner and can edit everything.` : `Shared with ${who}. They see the friends’ version.`));
+                  if (!err) {
+                    setEmail('');
+                    void refresh();
+                  }
+                }}
+              >
+                <input type="email" required placeholder="their email (they need an account)" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <div className="role-pick" role="radiogroup" aria-label="What they can do">
+                  <label><input type="radio" name={`r-${t.id}`} checked={role === 'friend'} onChange={() => setRole('friend')} /> <b>Friend</b> sees the friends’ version, read-only</label>
+                  <label><input type="radio" name={`r-${t.id}`} checked={role === 'partner'} onChange={() => setRole('partner')} /> <b>Travel partner</b> sees and edits everything, including bookings, notes and journal</label>
+                </div>
+                <button className="auth-primary">Share</button>
+                {msg && <p className="auth-note small">{msg}</p>}
+              </form>
+              {members && members.length > 0 && (
+                <ul className="members">
+                  {members.map((m) => (
+                    <li key={m.email}>
+                      <span>{m.email}</span>
+                      <em>{m.role === 'partner' ? 'travel partner' : 'friend'}</em>
+                      <button
+                        type="button"
+                        className="chip"
+                        onClick={async () => {
+                          const err = await unshareTrip(t.id, m.email);
+                          setMsg(err ?? `${m.email} no longer has access.`);
+                          void refresh();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}

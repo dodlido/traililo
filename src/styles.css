@@ -479,3 +479,11 @@ html[data-map-base='west'] .map-day span { font-family: var(--slab); font-style:
 html[data-map-base='west'] .map-day button { background: var(--inkb); color: var(--paper); border-radius: 6px; }
 html[data-map-base='west'] .map-day button:not(:disabled):active { background: var(--redb); color: var(--paper); }
 @media (prefers-reduced-motion: reduce) { .west-compass, html[data-map-base='west'] .map .now::after, html[data-map-base='west'] .map .now .ring, html[data-map-base='west'] .map .pin.stay.tonight .disc { animation: none; } }
+.role-tag { font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+.role-pick { display: grid; gap: 6px; margin: 8px 0; font-size: 14px; }
+.role-pick label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; line-height: 1.35; }
+.role-pick input { margin-top: 3px; accent-color: var(--accent); }
+.members { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.members li { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.members li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.members li em { font-style: normal; font-size: 12px; color: var(--fog); }
