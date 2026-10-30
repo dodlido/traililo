@@ -1,8 +1,8 @@
 // Editing, for the trip's owner. Everything opens as a bottom sheet; "Save" writes to the database straight away.
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { searchPlace, type Found } from './geocode.ts';
-import { MapPick, RouteMini } from './Pick.tsx';
+import { MapPick, PlanCtx, RouteMini, planAnchor, planPlaces } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
@@ -93,7 +93,11 @@ export function useSave(mutate: Mutate, onClose: () => void) {
   return { busy, error, run };
 }
 
-export function PlaceSearch({ onPick, current, onClear, near, keepOpen }: { onPick: (name: string, p: Point) => void; current?: Point; onClear: () => void; near?: Point; keepOpen?: boolean }) {
+export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }: { onPick: (name: string, p: Point) => void; current?: Point; onClear: () => void; near?: Point; keepOpen?: boolean; always?: boolean }) {
+  const ctx = useContext(PlanCtx);
+  const plan = useMemo(() => (ctx ? planPlaces(ctx.trip, ctx.tracks) : undefined), [ctx]);
+  const anchor = ctx ? planAnchor(ctx.trip, ctx.date) : undefined;
+  const [seen, setSeen] = useState(false);
   const [q, setQ] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
   const [res, setRes] = useState<Found[] | null>(null);
@@ -117,6 +121,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen }: { onPi
           placeholder="Search a place to pin it on the map"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setSeen(true)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -127,7 +132,21 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen }: { onPi
         <button type="button" className="chip" onClick={go} disabled={busy}>{busy ? '…' : 'Find'}</button>
         <button type="button" className={mapOpen ? 'chip is-on' : 'chip'} aria-pressed={mapOpen} onClick={() => setMapOpen(!mapOpen)}>Map</button>
       </div>
-      {mapOpen && <MapPick near={near} current={current} onPick={(n, p) => { onPick(n, p); if (!keepOpen) setMapOpen(false); }} />}
+      {(mapOpen || (plan && (always || seen || (res && res.length > 0)))) && (
+        <MapPick
+          near={near}
+          current={current}
+          anchor={anchor}
+          plan={plan}
+          pickable={mapOpen}
+          results={res ?? undefined}
+          onPick={(n, p) => {
+            onPick(n, p);
+            if (!keepOpen && mapOpen) setMapOpen(false);
+            if (!mapOpen) setRes(null);
+          }}
+        />
+      )}
       {current && (
         <p className="small">
           Pinned at {current.lat.toFixed(3)}, {current.lon.toFixed(3)}{' '}
@@ -539,7 +558,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
       </div>
 
       <Field label="Where on the map">
-        <PlaceSearch current={d.at} onPick={(_, p) => up({ at: p })} onClear={() => up({ at: undefined })} />
+        <PlaceSearch always current={d.at} onPick={(_, p) => up({ at: p })} onClear={() => up({ at: undefined })} />
       </Field>
 
       <label className="check"><input type="checkbox" checked={!!d.optional} onChange={(e) => up({ optional: e.target.checked })} /> Optional (only if there’s time)</label>
@@ -633,7 +652,7 @@ export function StayEditor({ trip, mutate, id, date, onClose }: { trip: Trip; mu
       </div>
       <Field label="Notes" hint="One per line. Friends see these."><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       <Field label="Private (address, phone, door code)" hint="Only you see these."><textarea rows={3} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>
-      <Field label="Where on the map"><PlaceSearch current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>
+      <Field label="Where on the map"><PlaceSearch always current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>
       <Actions onSave={save} busy={busy} error={err ?? error} onDelete={existing ? remove : undefined} />
     </Sheet>
   );
@@ -665,7 +684,7 @@ export function DayEditor({ trip, mutate, date, onClose }: { trip: Trip; mutate:
         <datalist id="region-list">{regions.map((r) => <option key={r} value={r} />)}</datalist>
       </Field>
       <Field label="Country code" hint="Two letters, like AR, CL, PT, JP."><input maxLength={2} value={country} onChange={(e) => setCountry(e.target.value)} /></Field>
-      <Field label="Where on the map"><PlaceSearch current={point} onPick={(_, p) => setPoint(p)} onClear={() => setPoint(undefined)} /></Field>
+      <Field label="Where on the map"><PlaceSearch always current={point} onPick={(_, p) => setPoint(p)} onClear={() => setPoint(undefined)} /></Field>
       <label className="check"><input type="checkbox" checked={rest} onChange={(e) => setRest(e.target.checked)} /> Apply the place and country to the following days in “{day.region}” too</label>
       <Actions onSave={save} busy={busy} error={error} />
     </Sheet>

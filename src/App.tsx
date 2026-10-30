@@ -14,6 +14,7 @@ import { Plan } from './Plan.tsx';
 import { JournalBlock, JournalEditor } from './Journal.tsx';
 import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
+import { PlanCtx } from './Pick.tsx';
 import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, saveTrip } from './backend.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
@@ -303,11 +304,13 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       </section>
       {toast && <div className={toast.bad ? 'toast bad' : 'toast'} role="status">{toast.text}</div>}
       {sheet?.type === 'add' && <AddMenu date={sheet.date} open={setSheet} onClose={() => setSheet(null)} />}
+      <PlanCtx.Provider value={{ trip, tracks, date: sheet && 'date' in sheet && sheet.date ? sheet.date : sheet?.type === 'stay' ? trip.stays.find((x) => x.id === sheet.id)?.checkIn : undefined }}>
       {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
+      </PlanCtx.Provider>
       {sheet?.type === 'settings' && (
         <SettingsEditor
           title={title}

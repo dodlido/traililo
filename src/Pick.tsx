@@ -1,8 +1,8 @@
 // A small map to tap on, for pinning a spot without searching for its name.
-import { useEffect, useRef } from 'react';
+import { createContext, useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Point } from './model.ts';
+import type { Point, Trip } from './model.ts';
 import { nameSpot } from './geocode.ts';
 
 const STYLE: maplibregl.StyleSpecification = {
@@ -11,27 +11,73 @@ const STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 't', type: 'raster', source: 't' }],
 };
 
-export function MapPick({ near, current, onPick }: { near?: Point; current?: Point; onPick: (name: string, p: Point) => void }) {
+/** What the editors know about the plan, so a map can show it: the whole trip and the day being worked on. */
+export const PlanCtx = createContext<{ trip: Trip; date?: string; tracks?: Record<string, { lines: number[][][] }> } | null>(null);
+
+export type PlanKind = 'stay' | 'hike' | 'activity' | 'travel' | 'spot' | 'town';
+export interface PlanPlace { name: string; kind: PlanKind; point: Point }
+
+/** Every place in the plan that has a spot on the map. */
+export function planPlaces(trip: Trip, tracks?: Record<string, { lines: number[][][] }>): PlanPlace[] {
+  const out: PlanPlace[] = [];
+  const seen = new Set<string>();
+  const add = (name: string, kind: PlanKind, point?: Point) => {
+    if (!point) return;
+    const k = `${kind}${point.lat.toFixed(3)}${point.lon.toFixed(3)}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ name, kind, point });
+  };
+  const regions = new Set<string>();
+  for (const d of trip.days) {
+    if (d.point && !regions.has(d.region)) { regions.add(d.region); add(d.region, 'town', d.point); }
+    for (const e of d.entries) {
+      if (e.kind === 'commute') { for (const l of e.legs ?? []) { add(l.from || 'Start', 'travel', l.fromPoint); add(l.to || 'End', 'travel', l.toPoint); } }
+      else if (e.kind === 'hike') { const t0 = tracks?.[e.id]?.lines[0]?.[0]; add(e.title, 'hike', e.at ?? (t0 ? { lat: t0[1], lon: t0[0] } : undefined)); for (const w of e.waypoints ?? []) add(w.name, 'hike', w.point); }
+      else add(e.title, 'activity', e.at);
+    }
+  }
+  for (const st of trip.stays) add(st.name, 'stay', st.point);
+  for (const po of trip.pois ?? []) add(po.name, 'spot', po.point);
+  for (const l of trip.lines ?? []) for (const x of l.stops ?? []) add(x.name, 'spot', x.point);
+  return out;
+}
+
+/** Where a map for this day should open when nothing has been chosen yet. */
+export function planAnchor(trip: Trip, date?: string): Point | undefined {
+  const d = date ? trip.days.find((x) => x.date === date) : undefined;
+  return d?.point ?? trip.stays.find((x) => x.id === d?.stayId)?.point;
+}
+
+const KIND_LABEL: Record<PlanKind, string> = { stay: 'Sleep', hike: 'Hike', activity: 'Activity', travel: 'Travel', spot: 'Spot', town: 'Town' };
+
+export function MapPick({ near, current, onPick, plan, results, pickable = true, anchor }: { near?: Point; current?: Point; onPick: (name: string, p: Point) => void; plan?: PlanPlace[]; results?: { name: string; point: Point }[]; pickable?: boolean; anchor?: Point }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const mark = useRef<maplibregl.Marker | null>(null);
+  const planMarks = useRef<maplibregl.Marker[]>([]);
+  const resMarks = useRef<maplibregl.Marker[]>([]);
+  const fitted = useRef(false);
   const cb = useRef(onPick);
   cb.current = onPick;
+  const can = useRef(pickable);
+  can.current = pickable;
+  const setMark = (m: maplibregl.Map, p?: Point) => {
+    mark.current?.remove();
+    mark.current = p ? new maplibregl.Marker({ color: '#9a8cf0' }).setLngLat([p.lon, p.lat]).addTo(m) : null;
+  };
   useEffect(() => {
     if (!box.current) return;
-    const c = near ?? current;
+    const c = near ?? current ?? anchor;
     const m = new maplibregl.Map({ container: box.current, style: STYLE, center: c ? [c.lon, c.lat] : [-70.5, -46], zoom: c ? 9 : 3.4, attributionControl: { compact: true } });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     m.on('click', async (e) => {
+      if (!can.current) return;
       const p = { lat: Math.round(e.lngLat.lat * 1e5) / 1e5, lon: Math.round(e.lngLat.lng * 1e5) / 1e5 };
-      setMark(p);
+      setMark(m, p);
       cb.current(await nameSpot(p), p);
     });
-    const setMark = (p: Point) => {
-      mark.current?.remove();
-      mark.current = new maplibregl.Marker({ color: '#9a8cf0' }).setLngLat([p.lon, p.lat]).addTo(m);
-    };
-    if (current) setMark(current);
+    if (current) setMark(m, current);
     map.current = m;
     return () => {
       m.remove();
@@ -39,10 +85,86 @@ export function MapPick({ near, current, onPick }: { near?: Point; current?: Poi
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A pin set from outside (a search result) moves the marker and the view.
+  const curKey = current ? `${current.lat},${current.lon}` : '';
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    setMark(m, current);
+    if (current) m.easeTo({ center: [current.lon, current.lat], zoom: Math.max(m.getZoom(), 9), duration: 400 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curKey]);
+  // The plan, drawn as small labelled dots.
+  const planKey = JSON.stringify((plan ?? []).map((x) => [x.kind, x.point.lat, x.point.lon]));
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    planMarks.current.forEach((x) => x.remove());
+    planMarks.current = (plan ?? []).map((x) => {
+      const el = document.createElement('div');
+      el.className = `plan-dot ${x.kind}`;
+      el.title = `${KIND_LABEL[x.kind]}: ${x.name}`;
+      const lab = document.createElement('span');
+      lab.textContent = x.name.length > 20 ? `${x.name.slice(0, 19)}…` : x.name;
+      el.appendChild(lab);
+      el.addEventListener('click', (ev) => {
+        if (!can.current) return;
+        ev.stopPropagation();
+        cb.current(x.name, { ...x.point });
+        setMark(m, x.point);
+      });
+      return new maplibregl.Marker({ element: el }).setLngLat([x.point.lon, x.point.lat]).addTo(m);
+    });
+    if (!fitted.current && plan?.length) {
+      fitted.current = true;
+      const c = near ?? current ?? anchor;
+      const b = new maplibregl.LngLatBounds();
+      if (c) {
+        // Open on the centre with the closest few planned places in view.
+        const d = (x: PlanPlace) => (x.point.lat - c.lat) ** 2 + ((x.point.lon - c.lon) * Math.cos((c.lat * Math.PI) / 180)) ** 2;
+        b.extend([c.lon, c.lat]);
+        [...plan].sort((x, y) => d(x) - d(y)).slice(0, 6).forEach((x) => b.extend([x.point.lon, x.point.lat]));
+      } else plan.forEach((x) => b.extend([x.point.lon, x.point.lat]));
+      m.fitBounds(b, { padding: 36, maxZoom: c ? 11 : 9, duration: 0 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planKey]);
+  // Search results, numbered; tap one to choose it.
+  const resKey = JSON.stringify((results ?? []).map((x) => [x.point.lat, x.point.lon]));
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    resMarks.current.forEach((x) => x.remove());
+    resMarks.current = (results ?? []).map((x, i) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'result-dot';
+      el.textContent = String(i + 1);
+      el.title = x.name;
+      el.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        cb.current(x.name, { ...x.point, approx: true });
+      });
+      return new maplibregl.Marker({ element: el }).setLngLat([x.point.lon, x.point.lat]).addTo(m);
+    });
+    if (results?.length) {
+      const b = new maplibregl.LngLatBounds();
+      results.forEach((x) => b.extend([x.point.lon, x.point.lat]));
+      if (current) b.extend([current.lon, current.lat]);
+      m.fitBounds(b, { padding: 40, maxZoom: 12, duration: 300 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resKey]);
+  const kinds = [...new Set((plan ?? []).map((x) => x.kind))];
   return (
     <div className="map-pick">
-      <div ref={box} className="map-pick-canvas" role="application" aria-label="Map: tap to pin a spot" />
-      <p className="small">Tap the map to pin a spot. Pinch or use + and − to move closer.</p>
+      <div ref={box} className="map-pick-canvas" role="application" aria-label={pickable ? 'Map: tap to pin a spot' : 'Map of the plan'} />
+      {kinds.length > 0 && (
+        <p className="plan-legend" aria-label="What the dots are">
+          {kinds.map((k) => <span key={k}><i className={`plan-dot-key ${k}`} />{KIND_LABEL[k]}</span>)}
+        </p>
+      )}
+      <p className="small">{pickable ? 'Tap the map (or a dot) to pin a spot. Pinch or use + and − to move closer.' : 'Your plan around here. Press Map to pin a spot by tapping.'}</p>
     </div>
   );
 }
