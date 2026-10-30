@@ -493,3 +493,12 @@ html[data-map-base='west'] .map-day button:not(:disabled):active { background: v
 .reorder .arrow-down svg { transform: rotate(-90deg); }
 .reorder .arrow-up, .reorder .arrow-down { display: inline-flex; }
 .facts-line { font-size: 14px; color: #c6d6d8; margin: 2px 0 4px; }
+.mini-route { display: grid; gap: 8px; margin: 4px 0; }
+.mini-canvas { height: 190px; border-radius: 12px; overflow: hidden; border: 1px solid var(--rule); }
+.mini-stop { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: #f3e3b8; color: #2a170a; border: 2.5px solid #2a170a; font: 800 12px var(--display); box-shadow: 1px 2px 0 rgba(42, 23, 10, 0.55); }
+.mini-legs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.mini-legs li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; }
+.mini-legs b { color: var(--accent); }
+.mini-legs span { color: #c6d6d8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-legs em { font-style: normal; font-weight: 600; white-space: nowrap; }
+.mini-total { font-size: 14px; font-weight: 700; text-align: right; }

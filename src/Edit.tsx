@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { searchPlace, type Found } from './geocode.ts';
-import { MapPick } from './Pick.tsx';
+import { MapPick, RouteMini } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
@@ -509,6 +509,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
               </div>
             );
           })}
+          <RouteMini legs={c.legs ?? []} />
           <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'drive' }] })}>+ Add a leg</button>
         </div>
       )}
