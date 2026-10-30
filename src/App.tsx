@@ -591,8 +591,8 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
       </div>
       <div className="day-body">
         <DayWeather trip={trip} day={day} />
-        {day.entries.map((e) => (
-          <EntryView key={e.id} entry={e} shared={shared} date={day.date} />
+        {day.entries.map((e, i) => (
+          <EntryView key={e.id} entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
         ))}
         {nothing && <p className="empty">Nothing planned yet.</p>}
         {(todos.length > 0 || canEdit) && !shared && (
@@ -674,9 +674,18 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   );
 }
 
-function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; date: string }) {
-  const { tracks, editing, openSheet, setTrack } = useT();
+function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; shared: boolean; date: string; index: number; count: number }) {
+  const { tracks, editing, openSheet, setTrack, mutate } = useT();
   const showOnMap = useContext(ShowCtx);
+  // swap with the neighbour; the order shown is the order saved
+  const move = (dir: -1 | 1) =>
+    void mutate((t) => {
+      const list = t.days.find((q) => q.date === date)!.entries;
+      const i = list.findIndex((x) => x.id === e.id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+    }).catch(() => {});
   const [gpxBusy, setGpxBusy] = useState(false);
   const [gpxError, setGpxError] = useState('');
   const loadGpx = async (file: File | undefined) => {
@@ -733,6 +742,16 @@ function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; 
           <button type="button" className="show-map edit-entry" onClick={() => openSheet({ type: 'entry', date, id: e.id })}>
             <Icon name="edit" size={16} /> Edit
           </button>
+        )}
+        {editing && !shared && count > 1 && (
+          <span className="reorder" role="group" aria-label="Change the order">
+            <button type="button" className="show-map edit-entry" disabled={index === 0} aria-label={`Move ${e.title} up`} onClick={() => move(-1)}>
+              <span className="arrow-up"><Icon name="back" size={16} /></span> Up
+            </button>
+            <button type="button" className="show-map edit-entry" disabled={index === count - 1} aria-label={`Move ${e.title} down`} onClick={() => move(1)}>
+              <span className="arrow-down"><Icon name="back" size={16} /></span> Down
+            </button>
+          </span>
         )}
         {editing && !shared && e.kind === 'hike' && (
           <>
