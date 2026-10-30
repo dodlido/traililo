@@ -346,3 +346,39 @@ ul, ol { list-style: none; }
 .map-canvas.far .pin.stay { width: 15px; height: 15px; }
 .map-canvas.far .pin.stay .disc { border-width: 1.5px; border-radius: 5px; }
 .map-canvas.far .pin.stay svg { display: none; }
+
+/* ---------- plan page, weather, journal, offline ---------- */
+.page-sub { color: var(--fog); font-size: 14px; margin-top: 8px; }
+.plan-block { padding: 8px 20px 18px; display: grid; gap: 10px; }
+.plan-block h2 { font-family: var(--display); font-weight: 800; font-size: 28px; text-transform: uppercase; margin-top: 8px; }
+.plan-block h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fog); margin: 6px 0; }
+.plan-note { font-size: 14px; color: var(--fog); }
+.plan-day { display: grid; gap: 6px; }
+.plan-date { justify-self: start; display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 0; font: inherit; font-weight: 700; color: var(--accent); cursor: pointer; }
+.todo label.no-box { display: flex; gap: 10px; align-items: center; cursor: default; }
+.link-btn { justify-self: start; background: none; border: 0; padding: 6px 0; font: inherit; font-size: 14px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.chip.solid { background: var(--accent); border-color: var(--accent); color: var(--night); justify-self: start; }
+.wx-list { list-style: none; display: grid; gap: 10px; padding: 0; }
+.wx-card { background: var(--card); border-radius: 16px; padding: 12px 14px; display: grid; gap: 4px; }
+.wx-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.wx-nums { font-size: 14px; }
+.wx-src { font-size: 12px; color: var(--fog); }
+.wx-tips { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: #c6d6d8; display: grid; gap: 2px; }
+.pack-add { display: flex; gap: 8px; }
+.pack-add input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 12px; padding: 9px 12px; }
+.wx-chip { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--fog); padding: 2px 0; }
+.wx-chip b { color: var(--ice); font-weight: 600; }
+.journal { display: grid; gap: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-radius: 14px; padding: 12px 14px; }
+.journal h4 { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.journal p { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+.journal-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.journal-photos a, .journal-photos div { position: relative; display: block; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--ink-2); }
+.journal-photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.journal-photos button { position: absolute; top: 4px; right: 4px; }
+.journal textarea, .sheet-body textarea.journal-text { width: 100%; min-height: 160px; font: inherit; font-size: 15px; line-height: 1.5; color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; resize: vertical; }
+.offline-card { margin: 0 20px 14px; background: var(--card); border-radius: 16px; padding: 12px 14px; display: grid; gap: 8px; }
+.offline-card h2 { font-size: 15px; font-weight: 700; }
+.offline-card p { font-size: 13px; color: var(--fog); }
+.offline-bar { height: 6px; border-radius: 3px; background: var(--ink-2); overflow: hidden; }
+.offline-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
+.offline-row { display: flex; gap: 8px; flex-wrap: wrap; }
