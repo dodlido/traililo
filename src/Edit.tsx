@@ -9,6 +9,7 @@ export type SheetState =
   | { type: 'entry'; date: string; id?: string; kind?: Entry['kind'] }
   | { type: 'stay'; id?: string; date?: string }
   | { type: 'day'; date: string }
+  | { type: 'journal'; date: string }
   | { type: 'settings' };
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
@@ -43,7 +44,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   );
 }
 
-function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
     <label className="field">
       <span>{label}</span>
@@ -53,7 +54,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
   );
 }
 
-function Actions({ onSave, busy, error, onDelete, deleteLabel = 'Delete' }: { onSave: () => void; busy: boolean; error: string | null; onDelete?: () => void; deleteLabel?: string }) {
+export function Actions({ onSave, busy, error, onDelete, deleteLabel = 'Delete' }: { onSave: () => void; busy: boolean; error: string | null; onDelete?: () => void; deleteLabel?: string }) {
   const [armed, setArmed] = useState(false);
   return (
     <div className="sheet-actions">
@@ -68,7 +69,7 @@ function Actions({ onSave, busy, error, onDelete, deleteLabel = 'Delete' }: { on
   );
 }
 
-function useSave(mutate: Mutate, onClose: () => void) {
+export function useSave(mutate: Mutate, onClose: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (fn: (t: Trip) => void) => {

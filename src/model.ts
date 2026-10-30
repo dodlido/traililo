@@ -136,6 +136,23 @@ export interface Day {
   point?: Point;
   entries: Entry[];
   todos: Todo[];
+  /** Your own words and pictures from the day, written during or after the trip. */
+  journal?: Journal;
+}
+
+export interface Journal {
+  text: string;
+  /** Storage paths of uploaded pictures. */
+  photos: string[];
+  /** Private unless you choose to show friends. */
+  shared?: boolean;
+}
+
+export interface PackItem {
+  id: string;
+  text: string;
+  group: string;
+  done: boolean;
 }
 
 export interface TripTotals {
@@ -195,6 +212,8 @@ export interface Trip {
   photos?: Record<string, string>;
   pois?: Poi[];
   lines?: RouteLine[];
+  /** What to bring. Only the owner sees it. */
+  packing?: PackItem[];
   totals: TripTotals;
 }
 

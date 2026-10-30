@@ -9,6 +9,10 @@ import { MapView, type Focus, type Tracks } from './MapView.tsx';
 import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
+import { OfflineCard } from './OfflineCard.tsx';
+import { Plan } from './Plan.tsx';
+import { JournalBlock, JournalEditor } from './Journal.tsx';
+import { DayWeather } from './DayWeather.tsx';
 import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fresh, saveTrip } from './backend.ts';
 import { computeTotals } from './totals.ts';
@@ -37,12 +41,12 @@ const TodayCtx = createContext<Today | null>(null);
 const km = (v: number) => `${Math.round(v * 10) / 10} km`;
 const PERSONAL_NOTE = /^Assumed:/i;
 
-type Route = { tab: 'journey' | 'map' | 'stays'; chapter: number | null };
+type Route = { tab: 'journey' | 'map' | 'stays' | 'plan'; chapter: number | null };
 function parseSub(sub: string, runsLen: number): Route {
   const h = sub.replace(/^\/+/, '');
   const m = /^chapter\/(\d+)$/.exec(h);
   if (m && +m[1] < runsLen) return { tab: 'journey', chapter: +m[1] };
-  if (h === 'map' || h === 'stays') return { tab: h, chapter: null };
+  if (h === 'map' || h === 'stays' || h === 'plan') return { tab: h, chapter: null };
   return { tab: 'journey', chapter: null };
 }
 const useDesktop = () => {
@@ -132,7 +136,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const route = useMemo(() => parseSub(sub, runs.length), [sub, runs.length]);
   const today = useMemo(() => whereIsToday(trip), [trip]);
   const [active, setActive] = useState(() => (today.state === 'during' ? today.date : trip.days[0].date));
-  const pendingToday = useRef(false);
+  const pendingDate = useRef<string | null>(null);
   const [focus, setFocus] = useState<Focus | null>(null);
   const desktop = useDesktop();
   const page = useRef<HTMLDivElement>(null);
@@ -149,9 +153,9 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     page.current?.scrollTo({ top: 0 });
     if (route.chapter !== null) {
       const run = runs[route.chapter];
-      if (pendingToday.current && run.days.some((d) => d.date === today.date || d === trip.days[today.idx])) {
-        pendingToday.current = false;
-        const date = trip.days[today.idx].date;
+      const date = pendingDate.current;
+      if (date && run.days.some((d) => d.date === date)) {
+        pendingDate.current = null;
         setActive(date);
         window.setTimeout(() => document.getElementById(`day-${date}`)?.scrollIntoView({ block: 'start' }), 60);
       } else setActive(run.days[0].date);
@@ -159,15 +163,19 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   }, [route.tab, route.chapter]);
 
   const chapterOfToday = today.state === 'during' ? runs.findIndex((r) => r.days.some((d) => d.date === trip.days[today.idx].date)) : -1;
-  const openToday = () => {
-    if (chapterOfToday < 0) return;
-    pendingToday.current = true;
-    if (route.chapter === chapterOfToday) {
-      pendingToday.current = false;
-      const date = trip.days[today.idx].date;
+  const openDay = (date: string) => {
+    const at = runs.findIndex((r) => r.days.some((d) => d.date === date));
+    if (at < 0) return;
+    if (route.tab === 'journey' && route.chapter === at) {
       setActive(date);
       document.getElementById(`day-${date}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    } else go(`chapter/${chapterOfToday}`);
+    } else {
+      pendingDate.current = date;
+      go(`chapter/${at}`);
+    }
+  };
+  const openToday = () => {
+    if (chapterOfToday >= 0) openDay(trip.days[today.idx].date);
   };
   // opening the app on a day of the trip lands on that day
   useEffect(() => {
@@ -214,12 +222,14 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
           {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} shared={shared} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
           {route.tab === 'stays' && <Stays shared={shared} go={go} />}
+          {route.tab === 'plan' && !shared && bundle.owner && <Plan trip={trip} mutate={commit} openDay={openDay} base={base} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
         </div>
         <nav className="tabs" aria-label="Sections">
           <Tab icon="journey" label="Journey" on={route.tab === 'journey'} onClick={() => go('')} />
           {!desktop && <Tab icon="map" label="Map" on={route.tab === 'map'} onClick={() => go('map')} />}
           <Tab icon="bed" label="Stays" on={route.tab === 'stays'} onClick={() => go('stays')} />
+          {bundle.owner && !shared && <Tab icon="flag" label="Plan" on={route.tab === 'plan'} onClick={() => go('plan')} />}
         </nav>
       </section>
 
@@ -244,6 +254,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       {sheet?.type === 'add' && <AddMenu date={sheet.date} open={setSheet} onClose={() => setSheet(null)} />}
       {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'settings' && (
         <SettingsEditor
@@ -275,7 +286,7 @@ function Tab({ icon, label, on, onClick }: { icon: string; label: string; on: bo
 }
 
 function Journey({ shared, setShared, go, editing, setEditing, openToday }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void; openToday: () => void }) {
-  const { trip, runs, base, owner, title, openSheet, staysById } = useT();
+  const { trip, runs, base, owner, title, openSheet, staysById, tracks } = useT();
   const today = useContext(TodayCtx)!;
   const nowDay = trip.days[today.idx];
   const nowStay = nowDay.stayId ? staysById.get(nowDay.stayId)?.name : undefined;
@@ -318,6 +329,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
       </header>
 
       <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
+      <OfflineCard trip={trip} tracks={tracks} />
 
       <div className="strip" role="list" aria-label="The route, by place">
         {runs.map((run, i) => (
@@ -518,7 +530,7 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
 }
 
 function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: boolean }) {
-  const { staysById, sheet, owner, editing, openSheet, mutate } = useT();
+  const { staysById, sheet, owner, editing, openSheet, mutate, trip } = useT();
   const today = useContext(TodayCtx)!;
   const isToday = today.state === 'during' && trip_dayIs(today, day.date);
   const [newTodo, setNewTodo] = useState('');
@@ -543,6 +555,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         )}
       </div>
       <div className="day-body">
+        <DayWeather trip={trip} day={day} />
         {day.entries.map((e) => (
           <EntryView key={e.id} entry={e} shared={shared} date={day.date} />
         ))}
@@ -590,6 +603,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
           </ul>
         )}
         {stay && <StayLine stay={stay} date={day.date} shared={shared} />}
+        <JournalBlock day={day} canWrite={!shared && owner && (editing || day.date <= today.date)} onWrite={() => openSheet({ type: 'journal', date: day.date })} />
         {canEdit && (
           <button type="button" className="add-btn" onClick={() => openSheet({ type: 'add', date: day.date })}>
             <Icon name="plus" size={18} /> Add to this day
