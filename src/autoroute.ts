@@ -11,6 +11,9 @@ export interface Job {
   from: Point;
   to: Point;
   label: string;
+  /** Set for a drawn line of the trip rather than a leg of a travel entry. */
+  line?: string;
+  via?: Point[];
 }
 const ROUTED = ['drive', 'taxi', 'bus', 'ferry'];
 
@@ -29,18 +32,30 @@ export function roadJobs(trip: Trip): Job[] {
       });
     }
   });
+  // lines drawn on the map by hand (from the planning map): follow the road or water between their points
+  for (const l of trip.lines ?? []) {
+    if (l.routed || !['drive', 'ferry'].includes(l.mode) || l.points.length < 2 || l.points.length > 12) continue;
+    out.push({ date: l.date, entry: '', leg: -1, mode: l.mode, from: l.points[0], to: l.points[l.points.length - 1], via: l.points.slice(1, -1), line: l.id, label: `${l.date.slice(5)}: ${l.name}` });
+  }
   return out;
 }
 
 /** Looks up one leg. Ferries with no charted line come back null and stay straight. */
 export async function routeJob(j: Job): Promise<Road | null> {
   if (j.mode === 'ferry') return routeFerry(j.from, j.to);
-  return routeRoad([j.from, j.to]);
+  return routeRoad([j.from, ...(j.via ?? []), j.to]);
 }
 
 /** Writes what was found into the trip (a leg that found nothing is marked so it is not asked again every time). */
 export function applyRoutes(t: Trip, found: { job: Job; r: Road | null }[]) {
   for (const { job, r } of found) {
+    if (job.line) {
+      const ln = t.lines?.find((x) => x.id === job.line);
+      if (!ln) continue;
+      ln.routed = true;
+      if (r) ln.points = r.path.map(([lon, lat]) => ({ lon, lat }));
+      continue;
+    }
     const e = t.days.find((d) => d.date === job.date)?.entries.find((q) => q.id === job.entry);
     if (e?.kind !== 'commute') continue;
     const l = e.legs[job.leg];
