@@ -10,6 +10,7 @@ interface Saved {
   bad: number;
 }
 const BASES: { id: BaseId; label: string }[] = [
+  { id: 'west', label: 'Old West' },
   { id: 'dark', label: 'Dark' },
   { id: 'terrain', label: 'Terrain' },
   { id: 'satellite', label: 'Satellite' },
@@ -23,12 +24,12 @@ const read = (b: BaseId): Saved | null => {
 };
 const startBase = (): BaseId => {
   try {
-    const v = localStorage.getItem('traililo:base');
-    if (v === 'terrain' || v === 'satellite') return v;
+    const v = localStorage.getItem('traililo:base2');
+    if (v === 'terrain' || v === 'satellite' || v === 'dark') return v;
   } catch {
     /* default */
   }
-  return 'dark';
+  return 'west';
 };
 
 export function OfflineCard({ trip, tracks }: { trip: Trip; tracks: Tracks }) {
