@@ -30,6 +30,7 @@ interface TripData {
   runs: ReturnType<typeof regionRuns>;
   staysById: ReturnType<typeof stayById>;
   editing: boolean;
+  setEditing: (v: boolean) => void;
   openSheet: (s: SheetState) => void;
   mutate: (fn: (t: Trip) => void) => Promise<void>;
   setTrack: (id: string, track: Tracks[string] | null, gain?: number, mode?: 'file' | 'fill') => Promise<void>;
@@ -130,7 +131,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     }
   };
   const data = useMemo<TripData>(
-    () => ({ base, owner: bundle.owner, trip, title, report: bundle.report, sheet: bundle.sources ?? {}, tracks, runs: regionRuns(trip), staysById: stayById(trip), editing: editing && bundle.owner, openSheet: setSheet, mutate: commit, setTrack }),
+    () => ({ base, owner: bundle.owner, trip, title, report: bundle.report, sheet: bundle.sources ?? {}, tracks, runs: regionRuns(trip), staysById: stayById(trip), editing: editing && bundle.owner, setEditing, openSheet: setSheet, mutate: commit, setTrack }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bundle, base, trip, title, editing, tracks],
   );
@@ -392,7 +393,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
 }
 
 function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number; shared: boolean; active: string; go: (h: string) => void; showOnMap: () => void; desktop: boolean }) {
-  const { runs, base, trip, owner, editing, mutate } = useT();
+  const { runs, base, trip, owner, editing, setEditing, mutate } = useT();
   const run = runs[idx];
   const mine = trip.photos?.[run.region];
   const [busy, setBusy] = useState<string | null>(null);
@@ -437,11 +438,18 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
         <button type="button" className="round back" aria-label="Back to the journey" onClick={() => go('')}>
           <Icon name="back" size={22} />
         </button>
-        {!desktop && (
-          <button type="button" className="chip on-map" onClick={showOnMap}>
-            <Icon name="map" size={16} /> Map
-          </button>
-        )}
+        <div className="hero-actions">
+          {owner && !shared && (
+            <button type="button" className={editing ? 'chip is-on' : 'chip'} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+              <Icon name="edit" size={16} /> {editing ? 'Done' : 'Edit'}
+            </button>
+          )}
+          {!desktop && (
+            <button type="button" className="chip" onClick={showOnMap}>
+              <Icon name="map" size={16} /> Map
+            </button>
+          )}
+        </div>
         <div className="chapter-hero-text">
           <p className="eyebrow">
             {run.country ? countryName[run.country] : ''} · {shortDate(run.days[0].date)}

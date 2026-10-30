@@ -90,7 +90,7 @@ ul, ol { list-style: none; }
 .chapter-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 35%, var(--night)); z-index: 1; }
 .chapter-hero > *:not(.scene) { position: relative; z-index: 2; }
 .chapter-hero .back { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px; }
-.chapter-hero .on-map { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; }
+.chapter-hero .hero-actions { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; display: flex; gap: 8px; z-index: 2; }
 .chapter-hero h1 { font-family: var(--display); font-weight: 800; font-size: clamp(54px, 15vw, 84px); line-height: 0.88; text-transform: uppercase; color: #fff; margin-top: 4px; text-shadow: 0 2px 20px rgba(0, 0, 0, 0.4); }
 .days { padding: 0 14px; display: grid; gap: 14px; }
 .day { background: var(--card); border-radius: 20px; padding: 16px 16px 14px; border: 1px solid transparent; border-top: 3px solid color-mix(in srgb, var(--accent) 70%, transparent); transition: border-color 0.3s, box-shadow 0.3s; scroll-margin-top: 12px; }
