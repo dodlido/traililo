@@ -14,7 +14,7 @@ import { Plan } from './Plan.tsx';
 import { JournalBlock, JournalEditor } from './Journal.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
-import { fresh, saveTrip } from './backend.ts';
+import { fetchLatest, fresh, saveTrip } from './backend.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
 import { countryName, dayOfMonth, minutes, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
@@ -93,7 +93,23 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       } catch (e) {
         tripRef.current = before;
         setTrip(before);
-        flash(e instanceof Error ? e.message : 'Could not save', true);
+        const msg = e instanceof Error ? e.message : 'Could not save';
+        // someone else saved first: take their version, so the next edit starts from it
+        if (/changed on another device/.test(msg)) {
+          try {
+            const l = await fetchLatest(bundle.id);
+            versionRef.current = l.version;
+            tripRef.current = l.trip;
+            tracksRef.current = l.tracks;
+            setTrip(l.trip);
+            setTracks(l.tracks);
+            flash('Someone else saved changes first. Showing their version. Please make your change again.', true);
+            throw e;
+          } catch (inner) {
+            if (inner === e) throw e;
+          }
+        }
+        flash(msg, true);
         throw e;
       }
     };
