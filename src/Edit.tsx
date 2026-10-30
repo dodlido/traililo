@@ -4,6 +4,7 @@ import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, P
 import { searchPlace, type Found } from './geocode.ts';
 import { MapPick } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
+import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
 import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
@@ -260,9 +261,17 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
       if (ROAD.includes(leg.mode)) {
         const r = await routeRoad([leg.fromPoint, leg.toPoint]);
         patchLeg(i, { path: r.path, distanceKm: r.km, durationMin: r.min });
+      } else if (leg.mode === 'ferry') {
+        // follow a charted ferry line when there is one, so the route stays on the water
+        const f = await routeFerry(leg.fromPoint, leg.toPoint);
+        if (f) patchLeg(i, { path: f.path, distanceKm: f.km, durationMin: f.min, pathTried: undefined });
+        else {
+          const km = Math.round(flat(leg.fromPoint, leg.toPoint) * 10) / 10;
+          patchLeg(i, { path: undefined, pathTried: true, distanceKm: km, durationMin: Math.round((km / 26) * 60) });
+        }
       } else {
         const km = Math.round(flat(leg.fromPoint, leg.toPoint) * 10) / 10;
-        const min = leg.mode === 'flight' ? Math.round((km / 780) * 60 + 50) : leg.mode === 'ferry' ? Math.round((km / 26) * 60) : undefined;
+        const min = leg.mode === 'flight' ? Math.round((km / 780) * 60 + 50) : undefined;
         patchLeg(i, { path: undefined, distanceKm: km, durationMin: min });
       }
     } catch (e) {
@@ -483,7 +492,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
                 {routing === i && <p className="road">{road ? 'Finding the road…' : 'Working it out…'}</p>}
                 {routing !== i && l.fromPoint && l.toPoint && (road ? l.path : true) && (
                   <p className="road">
-                    {road ? 'By road' : 'In a straight line'}: {l.distanceKm} km{l.durationMin ? ` · ${minutes(l.durationMin)}` : ''}{road ? ' (no traffic)' : ''}
+                    {road ? 'By road' : l.mode === 'ferry' ? (l.path ? 'Along the ferry line' : 'No charted ferry line found, so a straight line') : 'In a straight line'}: {l.distanceKm} km{l.durationMin ? ` · ${minutes(l.durationMin)}` : ''}{road ? ' (no traffic)' : ''}
                   </p>
                 )}
                 {!road && l.fromPoint && l.toPoint && (

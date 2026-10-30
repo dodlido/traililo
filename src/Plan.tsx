@@ -6,8 +6,7 @@ import { Icon } from './Icon.tsx';
 import { todayDate } from './today.ts';
 import { adviceFor, placePoint, weatherFor, type WeatherByDate } from './weather.ts';
 import { makePacking } from './packing.ts';
-import { routeRoad } from './roads.ts';
-import type { Point } from './model.ts';
+import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
 
@@ -259,33 +258,6 @@ function PackSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
   );
 }
 
-interface Job {
-  date: string;
-  entry: string;
-  leg: number;
-  from: Point;
-  to: Point;
-  label: string;
-}
-/** Drives and bus rides that are still drawn as a straight line between two places. */
-export function roadJobs(trip: Trip): Job[] {
-  const out: Job[] = [];
-  trip.days.forEach((d, i) => {
-    if ((trip.lines ?? []).some((l) => l.date === d.date && l.replace)) return;
-    for (const e of d.entries) {
-      if (e.kind !== 'commute') continue;
-      e.legs.forEach((l, k) => {
-        if (!['drive', 'taxi', 'bus'].includes(l.mode) || l.path) return;
-        const from = l.fromPoint ?? (e.legs.length === 1 ? trip.days[i - 1]?.point : undefined);
-        const to = l.toPoint ?? (e.legs.length === 1 ? d.point : undefined);
-        if (!from || !to || (from.lat === to.lat && from.lon === to.lon)) return;
-        out.push({ date: d.date, entry: e.id, leg: k, from, to, label: `${shortDate(d.date)}: ${l.from ?? ''} to ${l.to ?? ''}`.replace(/ to $/, '') });
-      });
-    }
-  });
-  return out;
-}
-
 function RoadSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
   const jobs = useMemo(() => roadJobs(trip), [trip]);
   const [prog, setProg] = useState<number | null>(null);
@@ -295,12 +267,14 @@ function RoadSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
   const go = async () => {
     setFailed([]);
     setMsg('');
-    const found: { job: Job; r: Awaited<ReturnType<typeof routeRoad>> }[] = [];
+    const found: { job: (typeof jobs)[number]; r: Awaited<ReturnType<typeof routeJob>> }[] = [];
     const bad: string[] = [];
     for (let i = 0; i < jobs.length; i++) {
       setProg(i);
       try {
-        found.push({ job: jobs[i], r: await routeRoad([jobs[i].from, jobs[i].to]) });
+        const r = await routeJob(jobs[i]);
+        found.push({ job: jobs[i], r });
+        if (!r) bad.push(jobs[i].label);
       } catch {
         bad.push(jobs[i].label);
       }
@@ -308,32 +282,20 @@ function RoadSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
     }
     setProg(null);
     setFailed(bad);
-    if (found.length)
-      await mutate((t) => {
-        for (const { job, r } of found) {
-          const e = t.days.find((d) => d.date === job.date)?.entries.find((q) => q.id === job.entry);
-          if (e?.kind !== 'commute') continue;
-          const l = e.legs[job.leg];
-          l.fromPoint = job.from;
-          l.toPoint = job.to;
-          l.path = r.path;
-          if (l.distanceKm === undefined) l.distanceKm = r.km;
-          if (l.durationMin === undefined) l.durationMin = r.min;
-        }
-      }).catch(() => {});
-    setMsg(`${found.length} drawn on real roads${bad.length ? `, ${bad.length} not found` : ''}.`);
+    if (found.length) await mutate((t) => applyRoutes(t, found)).catch(() => {});
+    setMsg(`${found.filter((f) => f.r).length} drawn on real roads and water lines${bad.length ? `, ${bad.length} not found` : ''}.`);
   };
   return (
     <section className="plan-block" aria-labelledby="plan-roads">
-      <h2 id="plan-roads">Drives on roads</h2>
-      <p className="plan-note">{jobs.length > 0 ? `${jobs.length} drive${jobs.length === 1 ? ' is' : 's are'} drawn as a straight line. This finds the real road for each one. It needs signal and takes a minute.` : msg}</p>
+      <h2 id="plan-roads">Routes on roads and water</h2>
+      <p className="plan-note">{jobs.length > 0 ? `${jobs.length} bus, car or ferry leg${jobs.length === 1 ? ' is' : 's are'} drawn as a straight line. This finds the real road, or the charted ferry line. It needs signal and takes a minute.` : msg}</p>
       {jobs.length > 0 && (
         <button type="button" className="chip solid" disabled={prog !== null} onClick={go}>
-          {prog !== null ? `Finding roads… ${prog + 1} of ${jobs.length}` : 'Draw them on roads'}
+          {prog !== null ? `Finding routes… ${prog + 1} of ${jobs.length}` : 'Find them'}
         </button>
       )}
       {jobs.length > 0 && msg && <p className="plan-note">{msg}</p>}
-      {failed.length > 0 && <p className="plan-note">No road found for: {failed.join('; ')}</p>}
+      {failed.length > 0 && <p className="plan-note">Nothing found for: {failed.join('; ')}. They stay as straight lines.</p>}
     </section>
   );
 }
