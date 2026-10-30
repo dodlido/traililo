@@ -487,3 +487,8 @@ html[data-map-base='west'] .map-day button:not(:disabled):active { background: v
 .members li { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .members li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .members li em { font-style: normal; font-size: 12px; color: var(--fog); }
+.reorder { display: inline-flex; gap: 8px; }
+.reorder button:disabled { opacity: 0.35; cursor: default; }
+.reorder .arrow-up svg { transform: rotate(90deg); }
+.reorder .arrow-down svg { transform: rotate(-90deg); }
+.reorder .arrow-up, .reorder .arrow-down { display: inline-flex; }
