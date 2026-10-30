@@ -296,8 +296,8 @@ ul, ol { list-style: none; }
 .map .pin:hover .disc, .map .pin:focus-visible .disc { transform: scale(1.14); }
 .map .pin svg { width: 16px; height: 16px; }
 .map .pin .lbl { position: absolute; left: 36px; top: 50%; transform: translateY(-50%); display: none; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; color: #fff; text-shadow: 0 0 3px var(--night), 0 0 3px var(--night), 0 0 6px var(--night), 0 1px 8px var(--night); pointer-events: none; }
-.map.show-labels .pin .lbl { display: block; }
-.map[data-base='terrain'] .pin .lbl, .map[data-base='terrain'] .now .label { color: var(--night); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 6px #fff; }
+.map-canvas.show-labels .pin .lbl { display: block; }
+.map-canvas[data-base='terrain'] .pin .lbl, .map-canvas[data-base='terrain'] .now .label { color: var(--night); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 6px #fff; }
 .map-base { position: absolute; top: 54px; right: 10px; z-index: 2; display: flex; padding: 3px; gap: 2px; background: rgba(11, 20, 24, 0.82); border: 1px solid var(--rule); border-radius: 9px; backdrop-filter: blur(4px); }
 .map-base button { font: inherit; font-size: 13px; line-height: 1; color: var(--fog); background: none; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
 .map-base button[aria-pressed='true'] { color: var(--night); background: var(--ice); font-weight: 600; }
@@ -342,3 +342,7 @@ ul, ol { list-style: none; }
 .photo-edit { position: absolute; left: 20px; top: 70px; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 40px); }
 .photo-problem { flex-basis: 100%; margin: 0; font-size: 13px; color: #ffb4a8; text-shadow: 0 0 4px #000; }
 .chapter-hero > .photo-edit, .chapter-hero > .photo-credit { position: absolute; }
+
+.map-canvas.far .pin.stay { width: 15px; height: 15px; }
+.map-canvas.far .pin.stay .disc { border-width: 1.5px; border-radius: 5px; }
+.map-canvas.far .pin.stay svg { display: none; }
