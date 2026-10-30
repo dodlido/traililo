@@ -2,6 +2,7 @@ import { whereIsToday, type Today } from './today.ts';
 import { PHOTOS, photoCredit, photoPage } from './photos.ts';
 import { deletePhoto, photoUrlOf, uploadPhoto } from './backend.ts';
 import { shrink } from './image.ts';
+import { parseGpx } from './gpx.ts';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type Tracks } from './MapView.tsx';
@@ -27,6 +28,7 @@ interface TripData {
   editing: boolean;
   openSheet: (s: SheetState) => void;
   mutate: (fn: (t: Trip) => void) => Promise<void>;
+  setTrack: (id: string, track: Tracks[string] | null, gain?: number) => Promise<void>;
 }
 const TripCtx = createContext<TripData>(null as unknown as TripData);
 const useT = () => useContext(TripCtx);
@@ -59,6 +61,8 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const [trip, setTrip] = useState(bundle.trip);
   const tripRef = useRef(trip);
   const versionRef = useRef(bundle.version);
+  const [tracks, setTracks] = useState(bundle.tracks);
+  const tracksRef = useRef(tracks);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const [editing, setEditing] = useState(() => bundle.owner && fresh.id === bundle.id);
   const [sheet, setSheet] = useState<SheetState | null>(null);
@@ -79,7 +83,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       tripRef.current = next;
       setTrip(next);
       try {
-        versionRef.current = await saveTrip({ ...bundle, title: meta?.title ?? title, cover: meta?.cover ?? cover, version: versionRef.current }, next);
+        versionRef.current = await saveTrip({ ...bundle, tracks: tracksRef.current, title: meta?.title ?? title, cover: meta?.cover ?? cover, version: versionRef.current }, next);
         flash('Saved');
       } catch (e) {
         tripRef.current = before;
@@ -92,12 +96,35 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     queue.current = p.catch(() => {});
     return p as Promise<void>;
   };
+  // a drawn trail for a hike: kept with the trip, saved with it, and undone if the save fails
+  const setTrack = async (id: string, track: Tracks[string] | null, gain?: number) => {
+    const before = tracksRef.current;
+    const next = { ...before };
+    if (track) next[id] = track;
+    else delete next[id];
+    tracksRef.current = next;
+    setTracks(next);
+    try {
+      await commit((t) => {
+        if (!track) return;
+        // a hike with no distance or climb in the sheet takes them from the file
+        for (const d of t.days) for (const e of d.entries) if (e.id === id && e.kind === 'hike') {
+          if (e.distanceKm === undefined) e.distanceKm = track.km;
+          if (e.elevationGainM === undefined && gain) e.elevationGainM = gain;
+        }
+      });
+    } catch (e) {
+      tracksRef.current = before;
+      setTracks(before);
+      throw e;
+    }
+  };
   const data = useMemo<TripData>(
-    () => ({ base, owner: bundle.owner, trip, title, report: bundle.report, sheet: bundle.sources ?? {}, tracks: bundle.tracks, runs: regionRuns(trip), staysById: stayById(trip), editing: editing && bundle.owner, openSheet: setSheet, mutate: commit }),
+    () => ({ base, owner: bundle.owner, trip, title, report: bundle.report, sheet: bundle.sources ?? {}, tracks, runs: regionRuns(trip), staysById: stayById(trip), editing: editing && bundle.owner, openSheet: setSheet, mutate: commit, setTrack }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bundle, base, trip, title, editing],
+    [bundle, base, trip, title, editing, tracks],
   );
-  const { runs, staysById, tracks } = data;
+  const { runs, staysById } = data;
   // friends' view: no to-dos, addresses, phone numbers or booking details. Friends only ever get that data; the owner can preview it.
   const [preview, setPreview] = useState(false);
   const shared = !bundle.owner || preview;
@@ -599,8 +626,23 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
 }
 
 function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; date: string }) {
-  const { tracks, editing, openSheet } = useT();
+  const { tracks, editing, openSheet, setTrack } = useT();
   const showOnMap = useContext(ShowCtx);
+  const [gpxBusy, setGpxBusy] = useState(false);
+  const [gpxError, setGpxError] = useState('');
+  const loadGpx = async (file: File | undefined) => {
+    if (!file) return;
+    setGpxError('');
+    setGpxBusy(true);
+    try {
+      const tr = parseGpx(await file.text(), file.name.replace(/\.gpx$/i, ''));
+      await setTrack(e.id, { lines: tr.lines, km: tr.km, name: tr.name }, tr.gain);
+    } catch (err) {
+      setGpxError(err instanceof Error ? err.message : 'Could not read that file');
+    } finally {
+      setGpxBusy(false);
+    }
+  };
   const mappable = !!(tracks[e.id] || e.at);
   const notes = shared ? e.notes.filter((n) => !PERSONAL_NOTE.test(n)) : e.notes;
   const icon = e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : 'note';
@@ -642,6 +684,20 @@ function EntryView({ entry: e, shared, date }: { entry: Entry; shared: boolean; 
           <button type="button" className="show-map edit-entry" onClick={() => openSheet({ type: 'entry', date, id: e.id })}>
             <Icon name="edit" size={16} /> Edit
           </button>
+        )}
+        {editing && !shared && e.kind === 'hike' && (
+          <>
+            <label className="show-map edit-entry">
+              <Icon name="plus" size={16} /> {gpxBusy ? 'Adding…' : tracks[e.id] ? 'Replace GPX trail' : 'Add GPX trail'}
+              <input type="file" accept=".gpx,application/gpx+xml,application/octet-stream,text/xml,application/xml" hidden disabled={gpxBusy} onChange={(ev) => { void loadGpx(ev.target.files?.[0]); ev.target.value = ''; }} />
+            </label>
+            {tracks[e.id] && !gpxBusy && (
+              <button type="button" className="show-map edit-entry" onClick={() => setTrack(e.id, null).catch(() => {})}>
+                Remove trail
+              </button>
+            )}
+            {gpxError && <p className="photo-problem" style={{ color: '#ff9c8a' }}>{gpxError}</p>}
+          </>
         )}
         {mappable && (
           <button type="button" className="show-map" onClick={() => showOnMap(e.id)}>
