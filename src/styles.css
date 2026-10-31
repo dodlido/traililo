@@ -628,3 +628,7 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .recap-more a { position: relative; flex: 1 1 0; min-width: 0; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--ink-2); }
 .recap-more a img, .recap-more a .recap-blank { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .recap-count { align-self: center; padding: 0 6px; color: var(--fog); font-size: 14px; }
+
+.fold-head { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: inherit; color: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
+.fold-head svg { transition: transform 0.15s; }
+.fold-head[aria-expanded='true'] svg { transform: rotate(90deg); }

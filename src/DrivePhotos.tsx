@@ -44,6 +44,13 @@ export function DrivePhotosBlock({ day, trip, canWrite, mutate }: { day: Day; tr
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [link, setLink] = useState('');
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem('traililo:pics-closed') !== '1';
+    } catch {
+      return true;
+    }
+  });
   const photos = day.drivePhotos ?? [];
   if (!driveAvailable() || (photos.length === 0 && !canWrite)) return null;
   const ready = driveConnected();
@@ -117,6 +124,15 @@ export function DrivePhotosBlock({ day, trip, canWrite, mutate }: { day: Day; tr
     }
     setBusy(false);
   };
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem('traililo:pics-closed', next ? '0' : '1');
+    } catch {
+      /* fine without it */
+    }
+  };
   const remove = (id: string) =>
     void mutate((t) => {
       const d = t.days.find((q) => q.date === day.date);
@@ -126,14 +142,20 @@ export function DrivePhotosBlock({ day, trip, canWrite, mutate }: { day: Day; tr
     });
   return (
     <div className="journal drive-photos">
-      <h4>Pictures</h4>
-      {photos.length > 0 && (
+      <h4>
+        <button type="button" className="fold-head" aria-expanded={open} onClick={toggle}>
+          <Icon name="next" size={16} /> Pictures{photos.length > 0 ? ` · ${photos.length}` : ''}
+        </button>
+      </h4>
+      {open && photos.length > 0 && (
         <div className="journal-photos">
           {photos.map((p) => (
             <Tile key={p.id} id={p.id} name={p.name} ready={ready} onRemove={canWrite ? () => remove(p.id) : undefined} />
           ))}
         </div>
       )}
+      {open && (
+        <>
       {!ready && (photos.length > 0 || canWrite) && (
         <button type="button" className="add-btn" disabled={busy} onClick={() => void connect()}>
           <Icon name="image" size={18} /> {busy ? 'Connecting…' : photos.length > 0 ? 'Show pictures (sign in with Google)' : 'Connect Google to add pictures'}
@@ -151,6 +173,8 @@ export function DrivePhotosBlock({ day, trip, canWrite, mutate }: { day: Day; tr
       )}
       {photos.length === 0 && canWrite && !note && <p className="hint">You choose in Google Photos. Copies are kept in a folder in your own Google Drive; this app only remembers which ones belong to which day.</p>}
       {note && <p role="status" className="hint">{note}</p>}
+        </>
+      )}
     </div>
   );
 }
