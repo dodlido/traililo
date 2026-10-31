@@ -23,6 +23,7 @@ import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
 import { countryName, dayOfMonth, minutes, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
+import { isCamp } from './mapkit.ts';
 
 interface TripData {
   base: string;
@@ -568,11 +569,11 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
         <h1>Where you sleep</h1>
       </header>
       <ul className="stay-list">
-        {trip.stays.map((s) => {
+        {[...trip.stays].sort((a, b) => a.checkIn.localeCompare(b.checkIn)).map((s) => {
           const region = trip.days.find((d) => d.stayId === s.id)?.region ?? '';
           const th = themeFor(region);
           return (
-            <li key={s.id} className={s.type === 'camp' ? 'stay-card camp' : 'stay-card'} style={{ ['--accent' as string]: th.accent }}>
+            <li key={s.id} className={isCamp(s) ? 'stay-card camp' : 'stay-card'} style={{ ['--accent' as string]: th.accent }}>
               <Scene region={region} theme={th} className="stay-art" />
               <div>
                 {editing && !shared && (
@@ -580,7 +581,7 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
                     <Icon name="edit" size={16} />
                   </button>
                 )}
-                {s.type === 'camp' && (
+                {isCamp(s) && (
                   <span className="camp-tag">
                     <Icon name="tent" size={15} /> Camp
                   </span>
@@ -710,7 +711,7 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   const night = nightOf(stay, date);
   return (
     <p className="stay">
-      <Icon name={stay.type === 'camp' ? 'tent' : 'bed'} size={18} />
+      <Icon name={isCamp(stay) ? 'tent' : 'bed'} size={18} />
       <span className="stay-name">{stay.name}</span>
       {stay.assumed && <span className="tag">to be booked</span>}
       {night && <span className="meta">{night}</span>}
