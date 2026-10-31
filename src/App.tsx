@@ -572,13 +572,18 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
           const region = trip.days.find((d) => d.stayId === s.id)?.region ?? '';
           const th = themeFor(region);
           return (
-            <li key={s.id} className="stay-card" style={{ ['--accent' as string]: th.accent }}>
+            <li key={s.id} className={s.type === 'camp' ? 'stay-card camp' : 'stay-card'} style={{ ['--accent' as string]: th.accent }}>
               <Scene region={region} theme={th} className="stay-art" />
               <div>
                 {editing && !shared && (
                   <button type="button" className="round small edit-btn" aria-label={`Edit ${s.name}`} onClick={() => openSheet({ type: 'stay', id: s.id })}>
                     <Icon name="edit" size={16} />
                   </button>
+                )}
+                {s.type === 'camp' && (
+                  <span className="camp-tag">
+                    <Icon name="tent" size={15} /> Camp
+                  </span>
                 )}
                 <h2>{s.name}</h2>
                 <p>
@@ -705,7 +710,7 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   const night = nightOf(stay, date);
   return (
     <p className="stay">
-      <Icon name="bed" size={18} />
+      <Icon name={stay.type === 'camp' ? 'tent' : 'bed'} size={18} />
       <span className="stay-name">{stay.name}</span>
       {stay.assumed && <span className="tag">to be booked</span>}
       {night && <span className="meta">{night}</span>}
