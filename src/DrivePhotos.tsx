@@ -1,9 +1,10 @@
-// A day's pictures from the owner's Google Drive. Only the file ids are in the trip; the pictures load from Google
-// once the owner has tapped to connect, and never go through this app's own storage.
+// A day's pictures. They are chosen in Google Photos and kept in a folder this app makes in the owner's own Google Drive;
+// only the Drive file ids are in the trip. The pictures load from Google once the owner has tapped to connect.
 import { useEffect, useState } from 'react';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
-import { connectDrive, describe, driveAvailable, driveConnected, driveLink, pickPictures, pictureBlob, pictureSrc, placeOnDays } from './drive.ts';
+import { chooseInPhotos, connectDrive, driveAvailable, driveConnected, driveLink, driveName, localTaken, pictureBlob, pictureSrc, placeOnDays, saveToDrive, tripFolder } from './drive.ts';
+import type { DrivePhoto } from './model.ts';
 
 function Tile({ id, name, ready, onRemove }: { id: string; name: string; ready: boolean; onRemove?: () => void }) {
   const [src, setSrc] = useState('');
@@ -38,15 +39,16 @@ function Tile({ id, name, ready, onRemove }: { id: string; name: string; ready: 
   );
 }
 
-export function DrivePhotosBlock({ day, canWrite, mutate }: { day: Day; canWrite: boolean; mutate: (fn: (t: Trip) => void) => Promise<void> }) {
+export function DrivePhotosBlock({ day, trip, canWrite, mutate }: { day: Day; trip: Trip; canWrite: boolean; mutate: (fn: (t: Trip) => void) => Promise<void> }) {
   const [, tick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [link, setLink] = useState('');
   const photos = day.drivePhotos ?? [];
   if (!driveAvailable() || (photos.length === 0 && !canWrite)) return null;
   const ready = driveConnected();
-  const fail = (e: unknown) => setNote(e instanceof Error ? e.message : 'Something went wrong with Google Drive.');
-  const show = async () => {
+  const fail = (e: unknown) => setNote(e instanceof Error ? e.message : 'Something went wrong with Google.');
+  const connect = async () => {
     setBusy(true);
     setNote('');
     try {
@@ -58,26 +60,59 @@ export function DrivePhotosBlock({ day, canWrite, mutate }: { day: Day; canWrite
     setBusy(false);
   };
   const add = async () => {
+    // opened in the same tap, because browsers only allow a popup then; Google Photos is loaded into it a moment later
+    const popup = window.open('about:blank', '_blank');
     setBusy(true);
-    setNote('');
+    setLink('');
+    setNote('Choose your pictures in Google Photos, then come back here.');
     try {
-      const docs = await pickPictures();
-      if (docs.length) {
-        const found = await describe(docs);
-        let result = { placed: 0, skipped: 0, elsewhere: 0 };
-        await mutate((t) => {
-          result = placeOnDays(t.days, found, day.date);
-        });
-        tick((n) => n + 1);
-        if (result.placed === 0) setNote('Those pictures were already added.');
-        else {
-          const parts = [`Added ${result.placed} ${result.placed === 1 ? 'picture' : 'pictures'}`];
-          if (result.elsewhere) parts.push(`${result.elsewhere} went to the day ${result.elsewhere === 1 ? 'it was' : 'they were'} taken`);
-          if (result.skipped) parts.push(`${result.skipped} already there`);
-          setNote(`${parts.join(', ')}.`);
+      const picks = await chooseInPhotos(popup, setLink);
+      setLink('');
+      if (picks.length === 0) {
+        setNote('No pictures were chosen.');
+        setBusy(false);
+        return;
+      }
+      const folder = await tripFolder(trip.title);
+      const lon = day.point?.lon;
+      const have = new Set(trip.days.flatMap((d) => d.drivePhotos?.map((p) => p.name) ?? []));
+      const saved: DrivePhoto[] = [];
+      let failed = 0;
+      let already = 0;
+      let reason = '';
+      for (const [i, pic] of picks.entries()) {
+        const taken = localTaken(pic.created, lon);
+        if (have.has(driveName(pic, taken))) {
+          already++;
+          continue;
+        }
+        setNote(`Saving to your Drive: ${i + 1} of ${picks.length}…`);
+        try {
+          saved.push(await saveToDrive(pic, folder, taken));
+        } catch (e) {
+          failed++;
+          reason ||= e instanceof Error ? e.message : '';
         }
       }
+      let result = { placed: 0, skipped: 0, elsewhere: 0 };
+      if (saved.length) {
+        await mutate((t) => {
+          result = placeOnDays(t.days, saved, day.date);
+        });
+        tick((n) => n + 1);
+      }
+      const parts = [saved.length ? `Saved ${saved.length} ${saved.length === 1 ? 'picture' : 'pictures'} to the “TraiLilo · ${trip.title}” folder in your Drive` : 'Nothing new was saved'];
+      if (result.elsewhere) parts.push(`${result.elsewhere} went to the day ${result.elsewhere === 1 ? 'it was' : 'they were'} taken`);
+      if (already) parts.push(`${already} already there`);
+      if (failed) parts.push(`${failed} could not be saved${reason ? ` (${reason})` : ''}`);
+      setNote(`${parts.join(', ')}.`);
     } catch (e) {
+      try {
+        popup?.close();
+      } catch {
+        /* already closed */
+      }
+      setLink('');
       fail(e);
     }
     setBusy(false);
@@ -99,17 +134,22 @@ export function DrivePhotosBlock({ day, canWrite, mutate }: { day: Day; canWrite
           ))}
         </div>
       )}
-      {photos.length > 0 && !ready && (
-        <button type="button" className="add-btn" disabled={busy} onClick={() => void show()}>
-          <Icon name="image" size={18} /> {busy ? 'Connecting…' : 'Show pictures (sign in with Google)'}
+      {!ready && (photos.length > 0 || canWrite) && (
+        <button type="button" className="add-btn" disabled={busy} onClick={() => void connect()}>
+          <Icon name="image" size={18} /> {busy ? 'Connecting…' : photos.length > 0 ? 'Show pictures (sign in with Google)' : 'Connect Google to add pictures'}
         </button>
       )}
-      {canWrite && (
+      {ready && canWrite && (
         <button type="button" className="add-btn" disabled={busy} onClick={() => void add()}>
-          <Icon name="plus" size={18} /> {busy ? 'Working…' : 'Add pictures from Google Drive'}
+          <Icon name="plus" size={18} /> {busy ? 'Working…' : 'Add pictures from Google Photos'}
         </button>
       )}
-      {photos.length === 0 && canWrite && <p className="hint">The pictures stay in your Drive. This app only remembers which ones you picked, and only for this trip.</p>}
+      {link && (
+        <a className="add-btn" href={link} target="_blank" rel="noopener noreferrer">
+          Open Google Photos to choose
+        </a>
+      )}
+      {photos.length === 0 && canWrite && !note && <p className="hint">You choose in Google Photos. Copies are kept in a folder in your own Google Drive; this app only remembers which ones belong to which day.</p>}
       {note && <p role="status" className="hint">{note}</p>}
     </div>
   );

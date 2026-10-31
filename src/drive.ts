@@ -1,62 +1,27 @@
-// Pictures from the person's own Google Drive. The app can only open the files the person picks in Google's own file picker
-// (the "drive.file" permission), never the rest of the Drive. Only the file id is kept in the trip; the picture itself is
-// loaded from Google when it is shown. The access lasts about an hour and is kept in memory only.
+// Pictures for the trip, kept in the owner's own Google Drive.
+// The owner picks pictures in Google Photos' own popup (the Photos Picker). Google hands over links that stop working after
+// an hour, so each chosen picture is copied at once, at 1600 px, into a folder this app creates in the owner's Drive.
+// Files an app creates itself stay readable by it ("drive.file"), so the app can show them later without being able to see
+// anything else in the Drive. Only the Drive file id is kept in the trip. Access lasts about an hour and is kept in memory only.
 import { GOOGLE_CLIENT_ID, loadScript, MailError } from './gmail.ts';
 import type { DrivePhoto } from './model.ts';
 
-const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const API = 'https://www.googleapis.com/drive/v3/files';
-const GAPI = 'https://apis.google.com/js/api.js';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/photospicker.mediaitems.readonly';
+const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+const PICKER = 'https://photospicker.googleapis.com/v1';
 
-/** The public key (limited to this site in the Google project), put in at build time. */
-export const GOOGLE_API_KEY = typeof __GOOGLE_API_KEY__ === 'string' ? __GOOGLE_API_KEY__ : '';
-/** False until the app is built with both the Google client id and the picker key. */
-export const driveAvailable = () => GOOGLE_CLIENT_ID !== '' && GOOGLE_API_KEY !== '';
-/** The project number is the first part of the client id; the picker wants it as the app id. */
-const projectNumber = () => GOOGLE_CLIENT_ID.split('-')[0] ?? '';
-
-interface PickerDoc {
-  id: string;
-  name?: string;
-  mimeType?: string;
-}
-interface PickerData {
-  action: string;
-  docs?: PickerDoc[];
-}
-interface PickerBuilder {
-  addView: (v: unknown) => PickerBuilder;
-  setOAuthToken: (t: string) => PickerBuilder;
-  setDeveloperKey: (k: string) => PickerBuilder;
-  setAppId: (id: string) => PickerBuilder;
-  enableFeature: (f: unknown) => PickerBuilder;
-  setCallback: (cb: (d: PickerData) => void) => PickerBuilder;
-  setTitle: (t: string) => PickerBuilder;
-  build: () => { setVisible: (v: boolean) => void };
-}
-interface PickerApi {
-  PickerBuilder: new () => PickerBuilder;
-  DocsView: new (id?: unknown) => { setMimeTypes: (m: string) => unknown; setIncludeFolders: (b: boolean) => unknown; setMode: (m: unknown) => unknown };
-  ViewId: { DOCS_IMAGES: unknown };
-  Feature: { MULTISELECT_ENABLED: unknown };
-  Action: { PICKED: string; CANCEL: string };
-  DocsViewMode: { GRID: unknown };
-}
-declare global {
-  interface Window {
-    gapi?: { load: (name: string, cb: () => void) => void };
-  }
-}
+/** False until the app is built with the Google client id. */
+export const driveAvailable = () => GOOGLE_CLIENT_ID !== '';
 
 let token: { value: string; until: number } | null = null;
-let picker: Promise<void> | null = null;
 
-/** True while the Google sign-in for Drive is still good. */
+/** True while the Google sign-in is still good. */
 export const driveConnected = () => token !== null && token.until > Date.now() + 30_000;
 
-/** Opens Google's permission screen for the picked files. Must be called from a tap. */
+/** Opens Google's permission screen. Must be called from a tap. */
 export async function connectDrive(): Promise<void> {
-  if (!driveAvailable()) throw new MailError('Drive pictures are not set up for this copy of the app.', 'setup');
+  if (!driveAvailable()) throw new MailError('Pictures are not set up for this copy of the app.', 'setup');
   await loadScript();
   const oauth = window.google?.accounts?.oauth2;
   if (!oauth) throw new MailError('Google sign-in did not load.', 'network');
@@ -86,23 +51,6 @@ export async function connectDrive(): Promise<void> {
   });
 }
 
-function loadPicker(): Promise<void> {
-  picker ??= new Promise<void>((ok, fail) => {
-    const done = () => (window.gapi ? window.gapi.load('picker', () => ok()) : fail(new MailError('The Google file picker did not load.', 'network')));
-    if (window.gapi) return done();
-    const s = document.createElement('script');
-    s.src = GAPI;
-    s.async = true;
-    s.onload = done;
-    s.onerror = () => {
-      picker = null;
-      fail(new MailError('Could not reach Google. Check your connection and try again.', 'network'));
-    };
-    document.head.appendChild(s);
-  });
-  return picker;
-}
-
 const live = () => {
   if (!token || token.until < Date.now()) {
     token = null;
@@ -111,113 +59,182 @@ const live = () => {
   return token.value;
 };
 
-async function drive(url: string): Promise<Response> {
+async function call(url: string, init: RequestInit = {}, what = 'Google'): Promise<Response> {
   const bearer = live();
   let r: Response;
   try {
-    r = await fetch(url, { headers: { Authorization: `Bearer ${bearer}` } });
+    r = await fetch(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${bearer}` } });
   } catch {
-    throw new MailError('Could not reach Google Drive. Check your connection and try again.', 'network');
+    throw new MailError(`Could not reach ${what}. Check your connection and try again.`, 'network');
   }
   if (r.status === 401) {
     token = null;
     throw new MailError('The Google sign-in has run out. Tap again to reconnect.', 'expired');
   }
   if (!r.ok) {
-    if (r.status === 403 || r.status === 404) throw new MailError('Google would not show that picture. It may have been moved, or the Drive API is not switched on in the Google project.', 'api');
-    throw new MailError(`Google Drive refused the request (${r.status}).`, 'api');
+    let reason = '';
+    try {
+      const j = (await r.clone().json()) as { error?: { message?: string; status?: string } };
+      reason = j.error?.status ?? j.error?.message ?? '';
+    } catch {
+      /* no detail */
+    }
+    if (/SERVICE_DISABLED|accessNotConfigured|has not been used|is disabled/i.test(reason)) throw new MailError(`${what} is not switched on in the Google project (the Drive API and the Google Photos Picker API both need enabling).`, 'setup');
+    if (r.status === 403) throw new MailError(`${what} did not allow that. Disconnect and connect again, and tick every permission box.`, 'denied');
+    if (r.status === 429) throw new MailError(`${what} is busy. Wait a minute and try again.`, 'api');
+    throw new MailError(`${what} refused the request (${r.status}${reason ? `, ${reason}` : ''}).`, 'api');
   }
   return r;
 }
 
-/** Shows Google's picture picker and returns what was chosen (empty if they closed it). */
-export async function pickPictures(): Promise<PickerDoc[]> {
-  if (!driveConnected()) await connectDrive();
-  await loadPicker();
-  const g = (window as unknown as { google?: { picker?: PickerApi } }).google?.picker;
-  if (!g) throw new MailError('The Google file picker did not load.', 'network');
-  return new Promise<PickerDoc[]>((ok) => {
-    const view = new g.DocsView(g.ViewId.DOCS_IMAGES);
-    view.setMimeTypes('image/jpeg,image/png,image/webp,image/heic,image/heif');
-    view.setIncludeFolders(true);
-    view.setMode(g.DocsViewMode.GRID);
-    new g.PickerBuilder()
-      .addView(view)
-      .setOAuthToken(live())
-      .setDeveloperKey(GOOGLE_API_KEY)
-      .setAppId(projectNumber())
-      .enableFeature(g.Feature.MULTISELECT_ENABLED)
-      .setTitle('Pick the pictures for this trip')
-      .setCallback((d) => {
-        if (d.action === g.Action.PICKED) ok(d.docs ?? []);
-        else if (d.action === g.Action.CANCEL) ok([]);
-      })
-      .build()
-      .setVisible(true);
-  });
-}
+// ---------------------------------------------------------------- choosing in Google Photos
 
-interface Meta {
+interface Session {
   id: string;
-  name?: string;
-  thumbnailLink?: string;
-  imageMediaMetadata?: { time?: string; location?: { latitude?: number; longitude?: number } };
+  pickerUri?: string;
+  mediaItemsSet?: boolean;
+  pollingConfig?: { pollInterval?: string; timeoutIn?: string };
 }
-const FIELDS = 'id,name,thumbnailLink,imageMediaMetadata(time,location(latitude,longitude))';
-const metas = new Map<string, Promise<Meta>>();
-
-function meta(id: string): Promise<Meta> {
-  let m = metas.get(id);
-  if (!m) {
-    m = drive(`${API}/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}`).then((r) => r.json() as Promise<Meta>);
-    m.catch(() => metas.delete(id));
-    metas.set(id, m);
-  }
-  return m;
+interface Picked {
+  id: string;
+  createTime?: string;
+  type?: string;
+  mediaFile?: { baseUrl?: string; mimeType?: string; filename?: string };
+  baseUrl?: string;
+  mimeType?: string;
 }
-
-/** "2027:03:16 14:22:10" (the camera's own clock) as "2027-03-16T14:22:10". */
-export function takenOf(time?: string): string | undefined {
-  const m = /^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(time ?? '');
-  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : undefined;
+export interface PickedPicture {
+  id: string;
+  name: string;
+  /** When it was taken, as an instant. */
+  created?: string;
+  baseUrl: string;
+  mime: string;
 }
 
-/** What the app keeps about each picked picture: the id, the name, and when and where it was taken if the camera said. */
-export async function describe(docs: PickerDoc[]): Promise<DrivePhoto[]> {
-  const out: DrivePhoto[] = [];
-  for (const d of docs) {
-    let photo: DrivePhoto = { id: d.id, name: d.name ?? 'Picture' };
-    try {
-      const m = await meta(d.id);
-      const loc = m.imageMediaMetadata?.location;
-      photo = {
-        id: d.id,
-        name: m.name ?? photo.name,
-        ...(takenOf(m.imageMediaMetadata?.time) ? { taken: takenOf(m.imageMediaMetadata?.time) } : {}),
-        ...(loc?.latitude !== undefined && loc.longitude !== undefined ? { lat: loc.latitude, lon: loc.longitude } : {}),
-      };
-    } catch {
-      /* keep it with just the name; it goes on the day it was added to */
+const seconds = (d: string | undefined, fallback: number) => {
+  const n = parseFloat(d ?? '');
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+/**
+ * Opens Google Photos in a popup and waits until the person has chosen. `popup` is a window opened in the same tap as the
+ * button press (browsers only allow that then); it is pointed at Google Photos once the session exists.
+ */
+export async function chooseInPhotos(popup: Window | null, onLink: (url: string) => void): Promise<PickedPicture[]> {
+  const s = (await (await call(`${PICKER}/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }, 'Google Photos')).json()) as Session;
+  if (!s.id || !s.pickerUri) throw new MailError('Google Photos did not start a picking session.', 'api');
+  const url = `${s.pickerUri}/autoclose`;
+  if (popup && !popup.closed) popup.location.href = url;
+  else onLink(url);
+  const every = seconds(s.pollingConfig?.pollInterval, 3) * 1000;
+  const until = Date.now() + seconds(s.pollingConfig?.timeoutIn, 600) * 1000;
+  let done = false;
+  while (Date.now() < until) {
+    await sleep(Math.max(1500, Math.min(every, 5000)));
+    const st = (await (await call(`${PICKER}/sessions/${encodeURIComponent(s.id)}`, {}, 'Google Photos')).json()) as Session;
+    if (st.mediaItemsSet) {
+      done = true;
+      break;
     }
-    out.push(photo);
   }
+  try {
+    popup?.close();
+  } catch {
+    /* already closed */
+  }
+  if (!done) {
+    void call(`${PICKER}/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, 'Google Photos').catch(() => {});
+    return [];
+  }
+  const out: PickedPicture[] = [];
+  let page = '';
+  do {
+    const q = `sessionId=${encodeURIComponent(s.id)}&pageSize=100${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`;
+    const j = (await (await call(`${PICKER}/mediaItems?${q}`, {}, 'Google Photos')).json()) as { mediaItems?: Picked[]; nextPageToken?: string };
+    for (const m of j.mediaItems ?? []) {
+      const baseUrl = m.mediaFile?.baseUrl ?? m.baseUrl;
+      const mime = m.mediaFile?.mimeType ?? m.mimeType ?? '';
+      if (!baseUrl || (m.type && m.type !== 'PHOTO' && m.type !== 'TYPE_UNSPECIFIED') || !mime.startsWith('image/')) continue;
+      out.push({ id: m.id, name: m.mediaFile?.filename ?? `${m.id}.jpg`, created: m.createTime, baseUrl, mime });
+    }
+    page = j.nextPageToken ?? '';
+  } while (page);
+  void call(`${PICKER}/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, 'Google Photos').catch(() => {});
   return out;
 }
 
-const blobs = new Map<string, Promise<string>>();
+// ---------------------------------------------------------------- the trip's folder in Drive
 
-/** A web address the picture can be shown from, at about `size` pixels wide. Needs the Drive sign-in. */
-export async function pictureSrc(id: string, size = 600): Promise<string> {
-  const m = await meta(id);
-  if (m.thumbnailLink) return m.thumbnailLink.replace(/=s\d+$/, `=s${size}`);
-  return pictureBlob(id);
+const folders = new Map<string, Promise<string>>();
+
+/** The folder for this trip, made on first use. Only folders this app made can be found, which is what we want. */
+export function tripFolder(title: string): Promise<string> {
+  const name = `TraiLilo · ${title}`;
+  let f = folders.get(name);
+  if (!f) {
+    f = (async () => {
+      const q = `mimeType='application/vnd.google-apps.folder' and name='${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and trashed=false`;
+      const found = (await (await call(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`, {}, 'Google Drive')).json()) as { files?: { id: string }[] };
+      if (found.files?.[0]) return found.files[0].id;
+      const made = (await (await call(`${DRIVE}?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder' }) }, 'Google Drive')).json()) as { id: string };
+      return made.id;
+    })();
+    f.catch(() => folders.delete(name));
+    folders.set(name, f);
+  }
+  return f;
 }
 
-/** Fallback: downloads the picture itself with the sign-in and shows it from memory. */
+/**
+ * The local date and time a picture was taken, "2027-03-16T14:22:10". Google gives an instant, not a place, so the clock is
+ * estimated from the longitude of where the day is (15 degrees per hour); it can be an hour or two off but not a day.
+ */
+export function localTaken(created: string | undefined, lon: number | undefined): string | undefined {
+  const t = created ? Date.parse(created) : NaN;
+  if (!Number.isFinite(t)) return undefined;
+  const offset = typeof lon === 'number' ? Math.round(lon / 15) : 0;
+  return new Date(t + offset * 3600_000).toISOString().slice(0, 19);
+}
+
+/** The file name a picture gets in Drive: when it was taken, then its own name. The same picture always gets the same name. */
+export const driveName = (pic: { name: string }, taken: string | undefined) => `${taken ? `${taken.replace('T', '_').replace(/:/g, '-')} ` : ''}${pic.name}`.replace(/[\\/]/g, '-');
+
+/** Copies one chosen picture into the trip's folder and returns what the trip keeps about it. */
+export async function saveToDrive(pic: PickedPicture, folder: string, taken: string | undefined): Promise<DrivePhoto> {
+  const bytes = await call(`${pic.baseUrl}=w1600-h1600`, {}, 'Google Photos').then((r) => r.blob());
+  const name = driveName(pic, taken);
+  const meta = { name, parents: [folder], mimeType: pic.mime, appProperties: taken ? { taken } : undefined };
+  const edge = `tl${Math.random().toString(36).slice(2)}`;
+  const body = new Blob([`--${edge}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${edge}\r\nContent-Type: ${pic.mime}\r\n\r\n`, bytes, `\r\n--${edge}--`]);
+  const made = (await (await call(`${UPLOAD}?uploadType=multipart&fields=id,name`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${edge}` }, body }, 'Google Drive')).json()) as { id: string; name?: string };
+  return { id: made.id, name: made.name ?? name, ...(taken ? { taken } : {}) };
+}
+
+// ---------------------------------------------------------------- showing them
+
+const thumbs = new Map<string, Promise<string>>();
+const blobs = new Map<string, Promise<string>>();
+
+/** A web address the picture can be shown from, at about `size` pixels wide. Needs the sign-in. */
+export function pictureSrc(id: string, size = 600): Promise<string> {
+  let t = thumbs.get(id);
+  if (!t) {
+    t = call(`${DRIVE}/${encodeURIComponent(id)}?fields=thumbnailLink`, {}, 'Google Drive')
+      .then((r) => r.json() as Promise<{ thumbnailLink?: string }>)
+      .then((m) => (m.thumbnailLink ? m.thumbnailLink.replace(/=s\d+$/, `=s${size}`) : pictureBlob(id)));
+    t.catch(() => thumbs.delete(id));
+    thumbs.set(id, t);
+  }
+  return t;
+}
+
+/** Downloads the picture itself with the sign-in and shows it from memory. */
 export function pictureBlob(id: string): Promise<string> {
   let b = blobs.get(id);
   if (!b) {
-    b = drive(`${API}/${encodeURIComponent(id)}?alt=media`)
+    b = call(`${DRIVE}/${encodeURIComponent(id)}?alt=media`, {}, 'Google Drive')
       .then((r) => r.blob())
       .then((blob) => URL.createObjectURL(blob));
     b.catch(() => blobs.delete(id));
@@ -229,7 +246,7 @@ export function pictureBlob(id: string): Promise<string> {
 /** Where the picture opens in Drive. */
 export const driveLink = (id: string) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
 
-/** Puts picked pictures on the right days: the day they were taken if that is in the trip, otherwise the day they were added from. */
+/** Puts saved pictures on the right days: the day they were taken if that is in the trip, otherwise the day they were added from. */
 export function placeOnDays(days: { date: string; drivePhotos?: DrivePhoto[] }[], photos: DrivePhoto[], fallback: string): { placed: number; skipped: number; elsewhere: number } {
   let placed = 0;
   let skipped = 0;
