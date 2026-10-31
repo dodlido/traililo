@@ -2,7 +2,7 @@
 //  - trips: the friends' version of a trip, readable by its members (after 2FA)
 //  - trip_private: the full version with bookings and to-dos, readable by the owner only (after 2FA)
 import { createClient, type Session } from '@supabase/supabase-js';
-import type { ImportReport, Trip } from './model.ts';
+import type { ImportReport, StayType, Trip } from './model.ts';
 import type { Tracks } from './MapView.tsx';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.ts';
 
@@ -85,12 +85,19 @@ export async function listTrips(session: Session): Promise<{ trips: TripSummary[
   return { trips, offline: false };
 }
 
+/** Trips saved before lodges and refugios were folded into hotels and camps. */
+function legacyTypes(t: Trip): Trip {
+  const old: Record<string, StayType> = { lodge: 'hotel', refugio: 'camp' };
+  if (!t.stays.some((s) => (s.type as string) in old)) return t;
+  return { ...t, stays: t.stays.map((s) => ((s.type as string) in old ? { ...s, type: old[s.type as string] } : s)) };
+}
+
 export async function loadTrip(session: Session, id: string): Promise<{ bundle: Bundle; offline: boolean }> {
   const uid = session.user.id;
   const pub = await sb.from('trips').select('id,title,owner_id,data,version,cover_region').eq('id', id).maybeSingle();
   if (pub.error || !pub.data) {
     const cached = cacheGet<Bundle>(uid, `trip:${id}`);
-    if (cached) return { bundle: cached, offline: true };
+    if (cached) return { bundle: { ...cached, trip: legacyTypes(cached.trip) }, offline: true };
     throw pub.error ?? new Error('Trip not found');
   }
   const d = pub.data.data as { trip: Trip; tracks: Tracks };
@@ -100,11 +107,11 @@ export async function loadTrip(session: Session, id: string): Promise<{ bundle: 
     const m = await sb.from('trip_members').select('role').eq('trip_id', id).eq('user_id', uid).maybeSingle();
     if (m.data?.role === 'partner') role = 'partner';
   }
-  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, role, trip: d.trip, tracks: d.tracks ?? {} };
+  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, role, trip: legacyTypes(d.trip), tracks: d.tracks ?? {} };
   if (role !== 'friend') {
     const priv = await sb.from('trip_private').select('data').eq('trip_id', id).maybeSingle();
     const p = priv.data?.data as { trip: Trip; report?: ImportReport; sources?: Bundle['sources'] } | undefined;
-    if (p) bundle = { ...bundle, owner: true, trip: p.trip, report: p.report, sources: p.sources };
+    if (p) bundle = { ...bundle, owner: true, trip: legacyTypes(p.trip), report: p.report, sources: p.sources };
   }
   cachePut(uid, `trip:${id}`, bundle);
   return { bundle, offline: false };

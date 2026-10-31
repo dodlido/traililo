@@ -10,7 +10,7 @@ export function makePacking(trip: Trip): PackItem[] {
   const hikes = entries.filter((e) => e.kind === 'hike').length;
   const ferries = entries.some((e) => e.kind === 'commute' && e.legs.some((l) => l.mode === 'ferry'));
   const flights = entries.some((e) => e.kind === 'commute' && e.legs.some((l) => l.mode === 'flight'));
-  const treks = entries.some((e) => e.kind === 'hike' && (e.durationMin ?? 0) >= 360) || trip.stays.some((s) => s.type === 'refugio' || s.type === 'camp');
+  const treks = entries.some((e) => e.kind === 'hike' && (e.durationMin ?? 0) >= 360) || trip.stays.some((s) => s.type === 'camp');
   const list: [string, string][] = [
     [G.docs, 'Passports (valid for 6+ months)'],
     [G.docs, 'Printed or offline copies of bookings'],

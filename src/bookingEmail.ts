@@ -363,11 +363,10 @@ export function townOf(address: string): string | undefined {
 }
 
 /** The stay type that fits a name, when the name says so. Hotels are the default, so they return nothing. */
-export function guessType(name: string): 'lodge' | 'refugio' | 'camp' | 'glamping' | 'other' | undefined {
-  if (/refugio/i.test(name)) return 'refugio';
+export function guessType(name: string): 'camp' | 'glamping' | 'other' | undefined {
+  if (/refugio/i.test(name)) return 'camp';
   if (/glamping|domo|dome/i.test(name)) return 'glamping';
   if (/camp(?:ing|site|ground)?\b/i.test(name)) return 'camp';
-  if (/lodge|cabin|cabaña|cabana|posada|hosteria|hostería/i.test(name)) return 'lodge';
   if (/departamento|apartment|apart-?hotel|\bflat\b/i.test(name)) return 'other';
   return undefined;
 }

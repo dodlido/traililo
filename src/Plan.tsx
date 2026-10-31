@@ -38,7 +38,7 @@ export function bookingItems(trip: Trip): Item[] {
     }
   }
   for (const s of trip.stays) {
-    if (s.assumed || s.nameIsPlaceholder || (!s.booking && !/refugio|camp/.test(s.type))) {
+    if (s.assumed || s.nameIsPlaceholder || (!s.booking && s.type !== 'camp')) {
       out.push({ key: `stay-${s.id}`, date: s.checkIn, text: `Book somewhere to sleep: ${s.name}${s.location ? `, ${s.location}` : ''} (${s.nights} night${s.nights === 1 ? '' : 's'})`, stay: true, warn: true });
     }
   }
