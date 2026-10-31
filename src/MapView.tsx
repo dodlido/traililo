@@ -26,6 +26,9 @@ function factsOf(e: Entry): string {
     if (e.startTime) bits.push(e.startTime);
     const d = minutes(e.durationMin);
     if (d) bits.push(d);
+  } else if (e.kind === 'meal' || e.kind === 'hang') {
+    if (e.time) bits.push(e.time);
+    if (e.partySize) bits.push(e.kind === 'meal' ? `table for ${e.partySize}` : `${e.partySize} ${e.partySize === 1 ? 'person' : 'people'}`);
   }
   return bits.join(' · ');
 }
@@ -777,7 +780,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
   }, [ready, dropKey]);
 
   const noTiles = tiles.bad >= 3 && tiles.ok === 0;
-  const legendCats = (['stay', 'camp', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
+  const legendCats = (['stay', 'camp', 'food', 'hang', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
   return (
     <div className={edit?.on ? 'map is-editing' : 'map'}>
       <div className="map-canvas" ref={box} role="application" aria-label="Route map of the trip, up to the day you are reading" />

@@ -5,7 +5,7 @@ import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
 import { OpenTrail } from './OpenTrail.tsx';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
+import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { Icon, modeIcon } from './Icon.tsx';
@@ -415,7 +415,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
       <section className="chapters" aria-label="Places">
         {runs.map((run, i) => {
           const th = themeFor(run.region);
-          const kinds = new Set(run.days.flatMap((d) => d.entries.map((e) => (e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : ''))));
+          const kinds = new Set(run.days.flatMap((d) => d.entries.map((e) => (e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : e.kind === 'meal' ? 'fork' : e.kind === 'hang' ? 'cocktail' : ''))));
           kinds.delete('');
           return (
             <a className="chapter-card" key={i} href={`${base}/chapter/${i}`} style={{ ['--accent' as string]: th.accent }}>
@@ -759,7 +759,7 @@ function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; sha
   };
   const mappable = !!(tracks[e.id] || e.at);
   const notes = shared ? e.notes.filter((n) => !PERSONAL_NOTE.test(n)) : e.notes;
-  const icon = e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : 'note';
+  const icon = e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : e.kind === 'meal' ? 'fork' : e.kind === 'hang' ? 'cocktail' : e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : 'note';
   return (
     <article className={`entry kind-${e.kind}${e.optional ? ' is-optional' : ''}`}>
       <span className="entry-icon">
@@ -873,6 +873,12 @@ function Facts({ entry }: { entry: Entry }) {
     if (x.distanceKm !== undefined) bits.push(km(x.distanceKm));
     const d = minutes(x.durationMin);
     if (d) bits.push(d);
+    return bits.length ? <FactRow bits={bits} /> : null;
+  }
+  if (entry.kind === 'meal' || entry.kind === 'hang') {
+    const m = entry as MealEntry;
+    if (m.time) bits.push(m.time);
+    if (m.partySize) bits.push(m.kind === 'meal' ? `table for ${m.partySize}` : `${m.partySize} ${m.partySize === 1 ? 'person' : 'people'}`);
     return bits.length ? <FactRow bits={bits} /> : null;
   }
   if (entry.kind === 'commute') {

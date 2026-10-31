@@ -82,6 +82,8 @@ export const kindLabel: Record<Entry['kind'], string> = {
   hike: 'Hike',
   experience: 'Experience',
   note: 'Note',
+  meal: 'Restaurant',
+  hang: 'Night out',
 };
 
 const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;

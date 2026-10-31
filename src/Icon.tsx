@@ -10,6 +10,8 @@ const P: Record<string, ReactElement> = {
   ferry: (<><path d="M3 15l2 5h14l2-5zM12 4v8M12 6l5 5h-5" /></>),
   spark: <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z" />,
   note: <path d="M5 4h14v16H5zM8 9h8M8 13h6" />,
+  cocktail: <path d="M4.5 4h15L12 12.5zM12 12.5V20M8 20h8M8 7.5h8" />,
+  fork: <path d="M7 3v7M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 10.5V21M17 21V3c-2.6 1.6-3.6 4.6-3.6 8.2H17" />,
   back: <path d="M15 5l-7 7 7 7" />,
   next: <path d="M9 5l7 7-7 7" />,
   eye: (<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>),

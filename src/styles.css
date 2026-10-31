@@ -105,6 +105,8 @@ ul, ol { list-style: none; }
 .kind-commute .entry-icon { background: #1d3340; color: #86b8e6; }
 .kind-experience .entry-icon { background: #35283f; color: #d9a0f0; }
 .kind-note .entry-icon { background: var(--ink-2); color: var(--fog); }
+.kind-meal .entry-icon { background: #3f2a22; color: #ff8f6b; }
+.kind-hang .entry-icon { background: #3a2545; color: #e58bff; }
 .entry-main { min-width: 0; flex: 1; }
 .entry h3 { font-size: 17px; font-weight: 600; line-height: 1.3; }
 .is-optional h3 { color: #c3d3d5; }
