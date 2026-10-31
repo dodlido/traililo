@@ -384,7 +384,10 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
     }
     if (!d.title.trim() && d.kind !== 'commute') return setErr('Give it a name first.');
     if (d.kind === 'commute') {
-      for (const l of c.legs ?? []) if ((isNew || l.fromPoint || l.toPoint) && (!(l.fromPoint && l.toPoint) || (ROAD.includes(l.mode) && !l.path))) return setErr('Pick a start and an end for each leg' + (c.legs.some((q) => ROAD.includes(q.mode)) ? ', so the road can be found.' : '.'));
+      // A leg you only changed the times of is saved as it is. Its places are checked only when new or when you changed them.
+      const orig = (existing as CommuteEntry | undefined)?.legs ?? [];
+      const placed = (q?: Leg) => JSON.stringify([q?.mode, q?.fromPoint, q?.toPoint]);
+      for (const [i, l] of (c.legs ?? []).entries()) if ((isNew || placed(l) !== placed(orig[i])) && (!(l.fromPoint && l.toPoint) || (ROAD.includes(l.mode) && !l.path))) return setErr('Pick a start and an end for each leg' + (c.legs.some((q) => ROAD.includes(q.mode)) ? ', so the road can be found.' : '.'));
     }
     const hadWps = ((existing as HikeEntry | undefined)?.waypoints?.length ?? 0) > 0;
     const track = d.kind === 'hike' && wps.length >= 2 ? { lines: [wps.map((w) => [w.point.lon, w.point.lat])], km: Math.round(wpKm * 10) / 10, name: d.title.trim() } : null;
