@@ -20,9 +20,8 @@ export const CATS: Record<Cat, { label: string; color: string; glyph: string; fi
 };
 
 /** A tent for a camp, a bed for everywhere else. */
-export const isCamp = (s: { type?: string; name: string }): boolean =>
-  s.type === 'camp' || ((s.type === undefined || s.type === 'hotel' || s.type === 'other') && /\bcamp(?:ing|site|ground)?\b|\bcampamento\b/i.test(s.name));
-export const stayCat = (s: { type?: string; name: string }): Cat => (isCamp(s) ? 'camp' : 'stay');
+export const isCamp = (s: { type?: string }): boolean => s.type === 'camp';
+export const stayCat = (s: { type?: string }): Cat => (isCamp(s) ? 'camp' : 'stay');
 
 /** Which kind of place a planned activity is, by its type and wording. */
 export function catOfEntry(e: Entry): Cat {
