@@ -9,7 +9,7 @@ import type { Feature, FeatureCollection, LineString, MultiLineString, Point as 
 import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
 import { CATS, catOfEntry, glyphSvg, stayCat, type Cat } from './mapkit.ts';
 import { addEmblems } from './emblems.ts';
-import { minutes } from './derive.ts';
+import { legTimes, minutes, timeSpan } from './derive.ts';
 
 export type Tracks = Record<string, { lines: number[][][]; km: number; name: string }>;
 export interface Focus { id: string; n: number }
@@ -18,10 +18,18 @@ function factsOf(e: Entry): string {
   const bits: string[] = [];
   if (e.kind === 'hike') {
     const h = e as HikeEntry;
+    const w = timeSpan(h.startTime, h.endTime);
+    if (w) bits.push(w);
     if (h.distanceKm !== undefined) bits.push(`${Math.round(h.distanceKm * 10) / 10} km`);
     if (h.elevationGainM) bits.push(`+${h.elevationGainM.toLocaleString('en-GB')} m`);
     const d = minutes(h.durationMin);
     if (d) bits.push(d);
+  } else if (e.kind === 'commute') {
+    for (const l of e.legs ?? []) {
+      const t = legTimes(l);
+      const w = timeSpan(t.start, t.end, t.days);
+      if (w) bits.push(w);
+    }
   } else if (e.kind === 'experience') {
     if (e.startTime) bits.push(e.startTime);
     const d = minutes(e.durationMin);
