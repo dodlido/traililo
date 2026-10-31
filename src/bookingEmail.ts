@@ -3,7 +3,7 @@ import type { Stay, StayType } from './model.ts';
 // Reads the text of a Booking.com confirmation email (pasted in) into the fields of a stay.
 // It works on labels ("Check-in", "Confirmation number", "PIN code") and is forgiving about layout, so a copy from a
 // phone (label and value on separate lines) and a copy from a computer (label: value) both work.
-// English wording only. Whatever it cannot find is simply left out, and the person checks the rest before saving.
+// English and Hebrew wording. Whatever it cannot find is simply left out, and the person checks the rest before saving.
 
 export interface EmailBooking {
   name?: string;
@@ -29,6 +29,12 @@ const MONTH = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?$/i;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const monthNum = (w: string) => (MONTH.test(w) ? MONTHS.indexOf(w.slice(0, 3).toLowerCase()) + 1 : 0);
 
+const HEB = ['ינואר', 'פברואר', 'מרץ|מרס', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const hebMonth = (w: string) => HEB.findIndex((h) => new RegExp(`^(?:${h})$`).test(w)) + 1;
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2027-02-15" as "15 Feb 2027". */
+const plain = (d: string) => `${+d.slice(8)} ${EN_MONTHS[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
+
 function iso(y: number, m: number, d: number): string | undefined {
   if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return undefined;
   const t = new Date(Date.UTC(y, m - 1, d));
@@ -52,6 +58,7 @@ export function findDates(s: string): Found[] {
   for (const m of s.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) add(m, iso(+m[1], +m[2], +m[3]));
   for (const m of s.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})\b/g)) add(m, iso(+m[3], monthNum(m[2]), +m[1]));
   for (const m of s.matchAll(/\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/g)) add(m, iso(+m[3], monthNum(m[1]), +m[2]));
+  for (const m of s.matchAll(new RegExp(`(\\d{1,2})\\s+ב?(${HEB.join('|')})\\s+(\\d{4})`, 'g'))) add(m, iso(+m[3], hebMonth(m[2]), +m[1]));
   for (const m of s.matchAll(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/g)) add(m, iso(+m[3], +m[2], +m[1]), +m[1] <= 12 && +m[2] <= 12);
   return out.sort((a, b) => a.start - b.start);
 }
@@ -70,7 +77,7 @@ const clean = (s: string) =>
 
 /** "14:00" or "14:00–23:00", read from the text right after a date. Handles 12-hour times like "1:00 PM". */
 function timeAfter(text: string, from: number): string | undefined {
-  const w = text.slice(from, from + 70).split(/check[\s-]?(?:in|out)/i)[0];
+  const w = text.slice(from, from + 70).split(/check[\s-]?(?:in|out)|צ['׳’]?ק[\s-]?(?:אין|אאוט)/i)[0];
   const T = String.raw`(\d{1,2})[:.](\d{2})\s*([AaPp]\.?[Mm]\.?)?`;
   const m = w.match(new RegExp(`${T}(?:\\s*(?:[-–—]|to)\\s*${T})?`));
   if (!m) return undefined;
@@ -117,12 +124,13 @@ export function parseBookingEmail(input: string): EmailBooking {
 
   // confirmation number and PIN
   const conf =
+    text.match(/(?:מספר\s+אישור(?:\s+הזמנה)?|אישור\s+הזמנה|מספר\s+הזמנה)\s*[:#]?\s*(\d[\d. ]{6,16}\d)/)?.[1] ??
     text.match(/(?:confirmation|booking|reservation)\s*(?:number|no\.?|#|code|id)\s*[:#]?\s*(\d[\d. ]{6,16}\d)/i)?.[1] ??
     text.match(/\bconfirmation\s*[:#]\s*(\d[\d. ]{6,16}\d)/i)?.[1] ??
     text.match(/\((\d{8,12})\)/)?.[1];
   const digits = conf?.replace(/\D/g, '');
   if (digits && digits.length >= 8 && digits.length <= 12) out.confirmation = digits;
-  const pin = text.match(/\bPIN(?:\s*code)?\s*[:#]?\s*(\d{4})\b/i)?.[1];
+  const pin = text.match(/(?:\bPIN(?:\s*code)?|קוד\s+סודי|קוד\s+PIN)\s*[:#]?\s*(\d{4})\b/i)?.[1];
   if (pin) out.pin = pin;
 
   // dates: look after the "Check-in" and "Check-out" labels, otherwise take the first two dates
@@ -134,8 +142,8 @@ export function parseBookingEmail(input: string): EmailBooking {
     }
     return undefined;
   };
-  let inD = after(/check[\s-]?in/gi) ?? after(/\barrival\b/gi);
-  let outD = after(/check[\s-]?out/gi) ?? after(/\bdeparture\b/gi);
+  let inD = after(/check[\s-]?in|צ['׳’]?ק[\s-]?אין/gi) ?? after(/\barrival\b/gi);
+  let outD = after(/check[\s-]?out|צ['׳’]?ק[\s-]?אאוט/gi) ?? after(/\bdeparture\b/gi);
   if (!inD && !outD) {
     const all = findDates(text);
     if (all.length >= 2) [inD, outD] = [all[0], all[1]];
@@ -156,17 +164,17 @@ export function parseBookingEmail(input: string): EmailBooking {
   }
 
   // phone
-  const phone = text.match(/(?:phone|tel(?:ephone)?)(?:\s*number)?\s*[:#]?\s*(\+?\d[\d ().-]{6,20}\d)/i)?.[1];
+  const phone = text.match(/(?:phone|tel(?:ephone)?|טלפון)(?:\s*number)?\s*[:#]?\s*(\+?\d[\d ().-]{6,20}\d)/i)?.[1];
   if (phone) out.phone = phone.trim();
 
   // address: a labelled line, otherwise the first line that looks like "street, town, country"
   let addrIdx = -1;
   const labelled = lines.findIndex((l, i) => {
-    const m = l.match(/^(?:address|location)\b\s*:?\s*(.*)$/i);
+    const m = l.match(/^(?:address|location|כתובת|מיקום)(?![\p{L}])\s*:?\s*(.*)$/iu);
     return !!m && (m[1] || lines[i + 1] || '').includes(',');
   });
   if (labelled >= 0) {
-    const rest = lines[labelled].replace(/^(?:address|location)\b\s*:?\s*/i, '');
+    const rest = lines[labelled].replace(/^(?:address|location|כתובת|מיקום)(?![\p{L}])\s*:?\s*/iu, '');
     if (rest.length > 5) {
       out.address = rest;
       addrIdx = labelled;
@@ -176,16 +184,28 @@ export function parseBookingEmail(input: string): EmailBooking {
     }
   }
   if (!out.address) {
+    // the address line is usually the one followed by a "get directions" link
+    addrIdx = lines.findIndex((l) => /הצגת הוראות נסיעה|get directions|show (?:on )?map|view (?:on )?map/i.test(l) && (l.match(/,/g) ?? []).length >= 2);
+    if (addrIdx >= 0) out.address = lines[addrIdx];
+  }
+  if (!out.address) {
     addrIdx = lines.findIndex(looksLikeAddress);
     if (addrIdx >= 0) out.address = lines[addrIdx];
   }
-  if (out.address) out.address = out.address.replace(/\s*(?:show (?:on )?map|view (?:on )?map|get directions)\s*$/i, '').trim();
+  if (out.address) out.address = out.address.replace(/\s*[-–—]?\s*(?:הצגת הוראות נסיעה|show (?:on )?map|view (?:on )?map|get directions)\s*$/i, '').trim();
 
   // town and free-cancellation deadline
   const town = text.match(/\byour \w+ in ([^\n.!]+?) is confirmed/i)?.[1];
   if (town) out.town = town.trim();
   const cancel = text.match(/cancel for free until\s+([^\n\[]*?\d{1,2}:\d{2}(?:\s*[AP]M)?)/i)?.[1];
-  if (cancel) out.cancelUntil = cancel.replace(/\s+/g, ' ').trim();
+  const cancelHe = text.match(/(?:עלות הביטול|בחינם עד)\s*:?\s*(?:עד\s+)?([^\n:]*?\d{1,2}:\d{2})/)?.[1];
+  const until = cancel ?? cancelHe;
+  if (until) {
+    let u = until.replace(/\s+/g, ' ').trim();
+    const f = findDates(u)[0];
+    if (f) u = u.slice(0, f.start) + plain(f.iso) + u.slice(f.end); // write the date in English, whatever language it came in
+    out.cancelUntil = u;
+  }
 
   // name: "X is expecting you", "booking for/at X", a labelled line, or the line just above the address
   const expecting = text.match(/^\s*(.+?) is expecting you\b/im)?.[1];
@@ -198,6 +218,7 @@ export function parseBookingEmail(input: string): EmailBooking {
     if (k > 0 && !NOT_A_NAME.test(lines[k - 1]) && !/[.:]$/.test(lines[k - 1])) out.name = tidyName(lines[k - 1]);
   }
   if (!out.name) out.name = tidyName(text.match(/please inform (.+?) in advance/i)?.[1] ?? '');
+  if (!out.name) out.name = tidyName(text.match(/כדאי לעדכן את (.+?) מראש/)?.[1] ?? '');
   if (!out.name) for (const l of lines) {
     const m = l.match(/(?:booking|reservation)\s+(?:confirmation\s+)?(?:for|at)\s+(.+)$/i);
     const n = m && tidyName(m[1].split(/\s[-–—|]\s/)[0]);
@@ -226,8 +247,11 @@ export function parseBookingEmail(input: string): EmailBooking {
 export function townOf(address: string): string | undefined {
   const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length < 3) return undefined;
-  const t = parts[1].replace(/\b[A-Z]{0,2}[- ]?\d[\d-]*\b/g, '').replace(/\s+/g, ' ').trim();
-  return t.length >= 2 ? t : undefined;
+  for (const p of parts.slice(1, -1)) {
+    const t = p.replace(/\S*\d\S*/g, '').replace(/\s+/g, ' ').trim(); // drop street numbers and postcodes
+    if ((t.match(/\p{L}/gu) ?? []).length >= 3 && !/[\u0590-\u05FF]/.test(t)) return t; // the town shows to friends, so only Latin-script names
+  }
+  return undefined;
 }
 
 /** The stay type that fits a name, when the name says so. Hotels are the default, so they return nothing. */
