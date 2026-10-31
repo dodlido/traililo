@@ -57,7 +57,7 @@ export function JournalEditor({ trip, mutate, date, onClose }: { trip: Trip; mut
         <textarea className="journal-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="The wind, the food, who we met…" />
       </Field>
       {photos.length > 0 && (
-        <Field label="Earlier pictures" hint="Pictures now come from Google Drive, on the day itself. These were added before that; remove any you no longer want.">
+        <Field label="Earlier pictures" hint="Pictures now come from Google Photos, on the day itself. These were added before that; remove any you no longer want.">
           <div className="journal-photos">
             {photos.map((p) => (
               <div key={p}>

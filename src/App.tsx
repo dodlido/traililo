@@ -706,7 +706,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         )}
         {stay && <StayLine stay={stay} date={day.date} shared={shared} />}
         <JournalBlock day={day} canWrite={!shared && owner && (editing || day.date <= today.date)} onWrite={() => openSheet({ type: 'journal', date: day.date })} />
-        {!shared && owner && <DrivePhotosBlock day={day} canWrite={editing || day.date <= today.date} mutate={mutate} />}
+        {!shared && owner && <DrivePhotosBlock day={day} trip={trip} canWrite={editing || day.date <= today.date} mutate={mutate} />}
         {canEdit && (
           <button type="button" className="add-btn" onClick={() => openSheet({ type: 'add', date: day.date })}>
             <Icon name="plus" size={18} /> Add to this day

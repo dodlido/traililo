@@ -26,7 +26,6 @@ jobs:
       - run: node scripts/build.mjs --public
         env:
           GOOGLE_CLIENT_ID: 510561554346-i04vfiki7339jfmspbngljugdtbklqle.apps.googleusercontent.com
-          GOOGLE_API_KEY: AIzaSyCMQWEw2zy_GPJZL6PRi-k1euvMM9p8PWE
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
