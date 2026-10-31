@@ -632,3 +632,10 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .fold-head { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: inherit; color: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
 .fold-head svg { transition: transform 0.15s; }
 .fold-head[aria-expanded='true'] svg { transform: rotate(90deg); }
+
+.drive-gap { display: grid; justify-items: center; margin: -4px 0; position: relative; }
+.drive-gap::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed var(--rule); }
+.drive-gap button { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin: 4px 0; padding: 5px 12px; border-radius: 999px; background: var(--night); border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--rule)); color: var(--accent); font-size: 13px; cursor: pointer; }
+.drive-gap button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-gap button:disabled { opacity: 0.6; }
+.drive-gap .hint { font-size: 13px; color: var(--fog); text-align: center; }
