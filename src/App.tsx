@@ -8,6 +8,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
+import { exportTrip } from './exportTrip.ts';
 import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
@@ -360,6 +361,7 @@ function Tab({ icon, label, on, onClick }: { icon: string; label: string; on: bo
 
 function Journey({ shared, setShared, go, editing, setEditing, openToday }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void; openToday: () => void }) {
   const { trip, runs, base, owner, title, openSheet, staysById, tracks } = useT();
+  const [exported, setExported] = useState('');
   const today = useContext(TodayCtx)!;
   const nowDay = trip.days[today.idx];
   const nowStay = nowDay.stayId ? staysById.get(nowDay.stayId)?.name : undefined;
@@ -398,6 +400,10 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
           {editing && owner && !shared && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'bookings' })}><Icon name="bed" size={16} /> Import bookings</button>
           )}
+          {editing && owner && !shared && (
+            <button type="button" className="chip" onClick={() => void exportTrip(title, trip, tracks).then(setExported).catch(() => setExported('Could not export.'))}><Icon name="note" size={16} /> Export trip</button>
+          )}
+          {exported && <p className="small" role="status">{exported}</p>}
           <p className="cover-sub">
             {t.days} days · {countries.join(' and ')}
           </p>

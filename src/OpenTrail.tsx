@@ -5,7 +5,7 @@ import { toGpx } from './gpx.ts';
 
 const fileName = (n: string) => (n.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'trail') + '.gpx';
 
-function download(file: File) {
+export function download(file: File) {
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
