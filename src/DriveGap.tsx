@@ -1,4 +1,5 @@
-// A one-tap "getting there" between two neighbours in a day (two entries, or the last entry and where the night is spent):
+// A one-tap "getting there" between two neighbours in a day (two entries, the last entry and where the night is spent, or
+// where last night was spent and the first entry or tonight's place):
 // a drive, bus, taxi, ferry or flight. The start and end come from the places on either side, and the road, ferry line or
 // flight distance is filled in at once.
 import { useState } from 'react';
@@ -50,12 +51,14 @@ function startOf(e: Entry, tracks: Tracks): End {
   return { name: e.title, point: e.at };
 }
 
-export function DriveGap({ day, index, stay, tracks, mutate, openSheet }: { day: Day; index: number; stay?: Stay; tracks: Tracks; mutate: (fn: (t: Trip) => void) => Promise<void>; openSheet: (s: SheetState) => void }) {
+/** `index` is the entry the getting-there follows; -1 is the start of the day, from where last night was spent. */
+export function DriveGap({ day, index, stay, prevStay, tracks, mutate, openSheet }: { day: Day; index: number; stay?: Stay; prevStay?: Stay; tracks: Tracks; mutate: (fn: (t: Trip) => void) => Promise<void>; openSheet: (s: SheetState) => void }) {
   const [busy, setBusy] = useState<TransportMode | ''>('');
   const [note, setNote] = useState('');
-  const here = day.entries[index];
+  const here = index >= 0 ? day.entries[index] : undefined;
   const next = day.entries[index + 1];
-  const from = endOf(here, tracks);
+  if (!here && !prevStay) return null;
+  const from: End = here ? endOf(here, tracks) : { name: prevStay!.name, point: prevStay!.point };
   const to: End | undefined = next ? startOf(next, tracks) : stay ? { name: stay.name, point: stay.point ?? day.point } : undefined;
   if (!to) return null;
   // two neighbours already in the same spot have nothing between them to drive
@@ -65,7 +68,7 @@ export function DriveGap({ day, index, stay, tracks, mutate, openSheet }: { day:
     setBusy(mode);
     setNote('');
     const id = `${day.date}-d${Math.random().toString(36).slice(2, 7)}`;
-    const leg: Leg = { mode, from: short(from.name), to: short(to.name), ...(from.point ? { fromPoint: from.point } : {}), ...(to.point ? { toPoint: to.point } : {}), ...(!next && stay?.type === 'home' ? { toHome: true } : {}) };
+    const leg: Leg = { mode, from: short(from.name), to: short(to.name), ...(from.point ? { fromPoint: from.point } : {}), ...(to.point ? { toPoint: to.point } : {}), ...(!here && prevStay?.type === 'home' ? { fromHome: true } : {}), ...(!next && stay?.type === 'home' ? { toHome: true } : {}) };
     if (from.point && to.point) {
       const km = Math.round(flat(from.point, to.point) * 10) / 10;
       try {
@@ -88,8 +91,8 @@ export function DriveGap({ day, index, stay, tracks, mutate, openSheet }: { day:
     try {
       await mutate((t) => {
         const d = t.days.find((q) => q.date === day.date)!;
-        const at = d.entries.findIndex((e) => e.id === here.id);
-        d.entries.splice(at < 0 ? d.entries.length : at + 1, 0, entry);
+        const at = here ? d.entries.findIndex((e) => e.id === here.id) : -1;
+        d.entries.splice(here ? (at < 0 ? d.entries.length : at + 1) : 0, 0, entry);
       });
     } catch (e) {
       setNote(e instanceof Error ? e.message : 'Could not save.');

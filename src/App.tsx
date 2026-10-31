@@ -658,6 +658,9 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
   const [newTodo, setNewTodo] = useState('');
   const canEdit = editing && !shared;
   const stay = day.stayId ? staysById.get(day.stayId) : undefined;
+  // where last night was spent, for the way out in the morning
+  const prevDay = trip.days[trip.days.findIndex((d) => d.date === day.date) - 1];
+  const prevStay = prevDay?.stayId ? staysById.get(prevDay.stayId) : undefined;
   const shownWarnings = new Set(day.entries.flatMap((e) => e.warnings));
   const todos = shared ? [] : day.todos.filter((td) => !shownWarnings.has(td.text));
   const dayLines = (trip.lines ?? []).filter((l) => l.date === day.date);
@@ -679,6 +682,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
       </div>
       <div className="day-body">
         <DayWeather trip={trip} day={day} />
+        {canEdit && <DriveGap day={day} index={-1} stay={stay} prevStay={prevStay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
         {day.entries.map((e, i) => (
           <Fragment key={e.id}>
             <EntryView entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
