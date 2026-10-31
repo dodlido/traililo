@@ -28,6 +28,9 @@ export interface MailFound {
   skipped: number;
   /** Ids of the emails that were not about this trip, so the next run does not read them again. */
   passed: string[];
+  /** How many emails were read in this run, and how many of them came from GetYourGuide. */
+  read: number;
+  readGyg: number;
 }
 
 const SITE = /@(?:[\w-]+\.)*(booking\.com|airbnb\.com|getyourguide\.com)\b/i;
@@ -67,7 +70,7 @@ function mergeStays(list: EmailBooking[]): EmailBooking {
 /** Sorts a batch of emails into bookings to review, cancelled ones, ones that could not be read, and counts of the rest. */
 export function triage(messages: MailMessage[], trip: { startDate: string; endDate: string }): MailFound {
   const inTrip = (d?: string) => !!d && ISO.test(d) && d >= trip.startDate && d <= trip.endDate;
-  const found: MailFound = { stays: [], activities: [], cancelled: [], unreadable: [], elsewhere: 0, skipped: 0, passed: [] };
+  const found: MailFound = { stays: [], activities: [], cancelled: [], unreadable: [], elsewhere: 0, skipped: 0, passed: [], read: messages.length, readGyg: 0 };
   const stays = new Map<string, { b: EmailBooking; at: number }[]>();
   const acts = new Map<string, { a: ActivityBooking; at: number }[]>();
   const cancelledKeys = new Map<string, number>();
@@ -81,6 +84,7 @@ export function triage(messages: MailMessage[], trip: { startDate: string; endDa
     const gyg = fromSite === 'getyourguide.com' || looksLikeGetYourGuide(withSubject);
 
     if (gyg) {
+      found.readGyg++;
       const a = parseGetYourGuide(withSubject);
       if (cancelled) {
         if (a.reference) cancelledRefs.set(a.reference, m.date);
