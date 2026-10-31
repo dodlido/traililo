@@ -1,11 +1,13 @@
 // Look of the map's places: one colour and one small drawing per kind of place.
 import type { Entry, PoiCat } from './model.ts';
 
-export type Cat = PoiCat | 'hike' | 'stay' | 'camp';
+export type Cat = PoiCat | 'hike' | 'stay' | 'camp' | 'food' | 'hang';
 
 export const CATS: Record<Cat, { label: string; color: string; glyph: string; fill?: boolean }> = {
   stay: { label: 'Where you sleep', color: '#d6a8ff', fill: true, glyph: 'M3 18V6h2v7h7V9h6a3 3 0 0 1 3 3v6h-2v-2H5v2zM7.5 9.2a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4z' },
   camp: { label: 'Camp', color: '#8ee07a', glyph: 'M3.5 20 12 6l8.5 14M2 20h20M12 6V3.5M9 20l3-6.5 3 6.5' },
+  food: { label: 'Restaurant', color: '#ff8f6b', glyph: 'M7 3v7M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 10.5V21M17 21V3c-2.6 1.6-3.6 4.6-3.6 8.2H17' },
+  hang: { label: 'Night out', color: '#e58bff', glyph: 'M4.5 4h15L12 12.5zM12 12.5V20M8 20h8M8 7.5h8' },
   hike: { label: 'Hike', color: '#f2b24b', fill: true, glyph: 'M2.5 19 9 8l4 6.2 2.3-3.4L21.5 19z' },
   view: { label: 'Viewpoint', color: '#7fd6c2', glyph: 'M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12zM12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z' },
   lake: { label: 'Lake', color: '#5cb8ff', glyph: 'M3 8.5c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19.5c3-3 6 3 9 0s6 3 9 0' },
@@ -26,6 +28,8 @@ export const stayCat = (s: { type?: string }): Cat => (isCamp(s) ? 'camp' : 'sta
 /** Which kind of place a planned activity is, by its type and wording. */
 export function catOfEntry(e: Entry): Cat {
   if (e.kind === 'hike') return 'hike';
+  if (e.kind === 'meal') return 'food';
+  if (e.kind === 'hang') return 'hang';
   const t = e.title;
   if (/kayak|boat|sail|navigat/i.test(t)) return 'water';
   if (/term(a|as)\b|hot spring|thermal/i.test(t)) return 'thermal';

@@ -1,6 +1,6 @@
 // Editing, for the trip's owner. Everything opens as a bottom sheet; "Save" writes to the database straight away.
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
+import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, MealEntry, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { findStayPin, searchPlace, type Found } from './geocode.ts';
 import { BOOKING_NOTE, bookingNotes, daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
 import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
@@ -189,6 +189,8 @@ export function AddMenu({ date, start, open, onClose }: { date: string; start?: 
   const items: { kind: Entry['kind']; label: string; icon: string }[] = [
     { kind: 'hike', label: 'Hike', icon: 'hike' },
     { kind: 'experience', label: 'Activity', icon: 'spark' },
+    { kind: 'meal', label: 'Restaurant', icon: 'fork' },
+    { kind: 'hang', label: 'Night out', icon: 'cocktail' },
     { kind: 'commute', label: 'Getting there', icon: 'bus' },
     { kind: 'note', label: 'Note', icon: 'note' },
   ];
@@ -269,6 +271,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
   const up = (patch: Record<string, unknown>) => setD((p) => ({ ...p, ...patch }) as Entry);
   const h = d as HikeEntry;
   const x = d as ExperienceEntry;
+  const m = d as MealEntry;
   const c = d as CommuteEntry;
   const dur = h.durationMin;
   const setDur = (hh: string, mm: string) => {
@@ -413,7 +416,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
       [dd.entries[i], dd.entries[j]] = [dd.entries[j], dd.entries[i]];
     });
 
-  const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note' }[d.kind];
+  const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note', meal: 'restaurant', hang: 'night out' }[d.kind];
   return (
     <Sheet title={isNew ? `New ${kindLabel}` : `Edit ${kindLabel}`} onClose={onClose}>
       {d.kind === 'hike' && isNew && (
@@ -441,7 +444,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
       )}
       {!quick && (
       <>
-      <Field label={d.kind === 'commute' ? 'Title (optional)' : 'Name'}>
+      <Field label={d.kind === 'commute' ? 'Title (optional)' : d.kind === 'meal' ? 'Restaurant' : d.kind === 'hang' ? 'Place or show' : 'Name'}>
         <input value={d.title} onChange={(e) => up({ title: e.target.value })} autoFocus={isNew} />
       </Field>
 
@@ -497,6 +500,13 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
             <Field label="Minutes"><input type="number" inputMode="numeric" value={dur === undefined ? '' : dur % 60} onChange={(e) => setDur(String(Math.floor((dur ?? 0) / 60)), e.target.value)} /></Field>
           </div>
         </>
+      )}
+
+      {(d.kind === 'meal' || d.kind === 'hang') && (
+        <div className="two">
+          <Field label="Time"><input type="time" value={m.time ?? ''} onChange={(e) => up({ time: e.target.value || undefined })} /></Field>
+          <Field label="People"><input type="number" min={1} inputMode="numeric" value={m.partySize ?? ''} onChange={(e) => up({ partySize: num(e.target.value) })} /></Field>
+        </div>
       )}
 
       {d.kind === 'commute' && (

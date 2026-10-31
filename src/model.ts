@@ -99,7 +99,14 @@ export interface NoteEntry extends EntryBase {
   kind: 'note';
 }
 
-export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry;
+/** A restaurant ('meal') or a night out like a bar or a show ('hang'). The booking (who, confirmation code) is on the entry itself. */
+export interface MealEntry extends EntryBase {
+  kind: 'meal' | 'hang';
+  time?: string; // "20:30"
+  partySize?: number;
+}
+
+export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry | MealEntry;
 
 export type StayType = 'hotel' | 'airbnb' | 'camp' | 'glamping' | 'other';
 
