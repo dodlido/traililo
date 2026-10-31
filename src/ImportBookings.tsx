@@ -232,6 +232,7 @@ export function ImportBookings({ trip, mutate, onClose }: { trip: Trip; mutate: 
 /** What the mail search set aside, in plain words, so nothing is silently dropped. */
 function MailNotes({ f, empty }: { f: MailFound; empty: boolean }) {
   const lines: string[] = [];
+  lines.push(`Read ${f.read} new email${f.read === 1 ? '' : 's'}${f.readGyg ? `, ${f.readGyg} from GetYourGuide` : ', none from GetYourGuide'}. Emails already found not to be about this trip are skipped.`);
   if (empty) lines.push('No bookings for this trip’s dates were found in your mail.');
   if (f.cancelled.length) lines.push(`Cancelled, so left out: ${f.cancelled.map((c) => `${c.title}${c.date ? ` (${day(c.date)})` : ''}`).join('; ')}.`);
   if (f.unreadable.length) lines.push(`Could not read ${f.unreadable.length} email${f.unreadable.length > 1 ? 's' : ''}, add by hand if needed: ${f.unreadable.map((u) => `“${u.subject}” (${day(u.received)})`).join('; ')}.`);
