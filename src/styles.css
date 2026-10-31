@@ -527,3 +527,10 @@ html[data-map-base='west'] .map-hint { background: rgba(36, 28, 20, 0.85); borde
 .import-rows { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
 .import-rows .check { align-items: flex-start; }
 .import-sub { display: block; margin-top: 2px; opacity: 0.75; font-size: 0.85em; }
+
+/* ---------- camps: a tent, not a bed ---------- */
+.stay-card.camp { background: color-mix(in srgb, #8ee07a 13%, var(--card)); box-shadow: inset 4px 0 0 #8ee07a; }
+.camp-tag { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 4px; padding: 2px 9px 2px 7px; border-radius: 999px; background: #8ee07a; color: #10240c; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.camp-tag svg { flex: none; }
+.map .pin.stay.camp .disc, .map-canvas.far .pin.stay.camp .disc { border-radius: 50%; }
+html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4px 4px; }

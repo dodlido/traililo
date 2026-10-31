@@ -3,6 +3,7 @@ const P: Record<string, ReactElement> = {
   journey: (<><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></>),
   map: (<><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" /><path d="M9 4v14M15 6v14" /></>),
   bed: (<><path d="M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5" /><circle cx="7" cy="11" r="1.4" /></>),
+  tent: (<><path d="M3.5 20 12 6l8.5 14M2 20h20M12 6V3.5" /><path d="M9 20l3-6.5 3 6.5" /></>),
   hike: <path d="M2.5 19l6-10 4 6 2.2-3.2 6.8 7.2z" />,
   flight: <path d="M2 13l8-2 4-8 2 1-2 8 6 2 1 2-8-1-3 5-2-1 1-5z" />,
   bus: (<><path d="M4 16V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M4 16h16M7 19v-3M17 19v-3M4 11h16" /></>),

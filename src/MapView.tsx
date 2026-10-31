@@ -7,7 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerSource from 'worker-text';
 import type { Feature, FeatureCollection, LineString, MultiLineString, Point as GeoPoint } from 'geojson';
 import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
-import { CATS, catOfEntry, glyphSvg, type Cat } from './mapkit.ts';
+import { CATS, catOfEntry, glyphSvg, stayCat, type Cat } from './mapkit.ts';
 import { addEmblems } from './emblems.ts';
 import { minutes } from './derive.ts';
 
@@ -560,12 +560,13 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
       const st = list[0];
       const el = document.createElement('button');
       el.type = 'button';
-      el.className = 'pin stay';
-      el.style.setProperty('--c', CATS.stay.color);
+      const cat: Cat = list.every((x) => stayCat(x) === 'camp') ? 'camp' : 'stay';
+      el.className = cat === 'camp' ? 'pin stay camp' : 'pin stay';
+      el.style.setProperty('--c', CATS[cat].color);
       el.setAttribute('aria-label', list.map((x) => x.name).join(', '));
       const disc = document.createElement('span');
       disc.className = 'disc';
-      disc.append(glyphSvg('stay'));
+      disc.append(glyphSvg(cat));
       const lbl = document.createElement('span');
       lbl.className = 'lbl';
       lbl.textContent = list.map((x) => x.name).join(' · ');
@@ -573,7 +574,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
       el.addEventListener('click', (ev) => {
         ev.stopPropagation();
         const nights = (x: (typeof list)[number]) => `${x.nights} ${x.nights === 1 ? 'night' : 'nights'}, from ${new Date(x.checkIn + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`;
-        showRef.current?.(lngLat(st.point!), list.map((x) => x.name).join(' · '), list.map(nights).join(' · '), st.point!.approx ? 'Town-level position' : undefined, undefined, 'stay');
+        showRef.current?.(lngLat(st.point!), list.map((x) => x.name).join(' · '), list.map(nights).join(' · '), st.point!.approx ? 'Town-level position' : undefined, undefined, cat);
       });
       stayRef.current.push({ key, el });
       stayMarkers.current.push(new maplibregl.Marker({ element: el, anchor: 'center', offset: [0, -30] }).setLngLat(lngLat(st.point!)).addTo(map));
@@ -776,7 +777,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
   }, [ready, dropKey]);
 
   const noTiles = tiles.bad >= 3 && tiles.ok === 0;
-  const legendCats = (['stay', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
+  const legendCats = (['stay', 'camp', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
   return (
     <div className={edit?.on ? 'map is-editing' : 'map'}>
       <div className="map-canvas" ref={box} role="application" aria-label="Route map of the trip, up to the day you are reading" />
