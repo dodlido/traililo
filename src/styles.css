@@ -379,6 +379,8 @@ ul, ol { list-style: none; }
 .journal-photos button { position: absolute; top: 4px; right: 4px; }
 .journal textarea, .sheet-body textarea.journal-text { width: 100%; min-height: 160px; font: inherit; font-size: 15px; line-height: 1.5; color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; resize: vertical; }
 .map-pick { display: grid; gap: 4px; margin-top: 8px; }
+.map-pick-wrap { position: relative; }
+.map-pick-sat { position: absolute; left: 8px; top: 8px; z-index: 2; }
 .map-pick-canvas { height: 280px; border-radius: 12px; overflow: hidden; }
 .seg-switch { display: flex; gap: 6px; }
 .seg-switch .chip { flex: 1; justify-content: center; }
