@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { createTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
+import { createTrip, deleteTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { THEMES, Scene, themeFor } from './scenes.tsx';
@@ -32,19 +32,22 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
       <NewTrip />
       <ul className="trip-list">
         {trips?.map((t) => (
-          <TripCard key={t.id} t={t} />
+          <TripCard key={t.id} t={t} session={session} onDeleted={() => setTrips((l) => (l ? l.filter((x) => x.id !== t.id) : l))} />
         ))}
       </ul>
     </div>
   );
 }
 
-function TripCard({ t }: { t: TripSummary }) {
+function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session; onDeleted: () => void }) {
   const th = themeFor(t.cover_region);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'friend' | 'partner'>('friend');
   const [msg, setMsg] = useState<string | null>(null);
+  const [sure, setSure] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [delErr, setDelErr] = useState<string | null>(null);
   const [members, setMembers] = useState<{ email: string; role: 'friend' | 'partner' }[] | null>(null);
   const refresh = () => listMembers(t.id).then(setMembers).catch((e) => setMsg(e instanceof Error ? e.message : 'Could not load who has access.'));
   useEffect(() => {
@@ -109,6 +112,37 @@ function TripCard({ t }: { t: TripSummary }) {
                 </ul>
               )}
             </>
+          )}
+          {!sure ? (
+            <button type="button" className="chip danger" onClick={() => setSure(true)}>Delete trip</button>
+          ) : (
+            <div className="delete-confirm" role="alertdialog" aria-label={`Delete ${t.title}`}>
+              <p>
+                <b>Delete “{t.title}” for good?</b> Every day, booking, note and journal entry goes, and so does everyone’s access. This cannot be undone. Pictures in your Google Drive are not touched.
+              </p>
+              {delErr && <p className="auth-error">{delErr}</p>}
+              <div className="row">
+                <button
+                  type="button"
+                  className="chip danger"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    setDelErr(null);
+                    try {
+                      await deleteTrip(session, t.id);
+                      onDeleted();
+                    } catch (e) {
+                      setDelErr(e instanceof Error ? e.message : 'Could not delete the trip.');
+                      setDeleting(false);
+                    }
+                  }}
+                >
+                  {deleting ? 'Deleting…' : 'Yes, delete it'}
+                </button>
+                <button type="button" className="chip" disabled={deleting} onClick={() => { setSure(false); setDelErr(null); }}>Keep it</button>
+              </div>
+            </div>
           )}
         </div>
       )}
