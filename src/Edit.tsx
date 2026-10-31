@@ -9,7 +9,7 @@ import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
 import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
-import { legTimes, minutes } from './derive.ts';
+import { legTimes, minutes, timeSpan } from './derive.ts';
 
 /** A spot picked on the map, to start something from. */
 export interface Start { name: string; point: Point }
@@ -231,6 +231,7 @@ export function AddMenu({ date, start, open, onClose }: { date: string; start?: 
 
 // ---------------------------------------------------------------- entries
 
+interface WizStep { key: string; title: string; node: ReactNode; summary: string; empty: boolean }
 const MODES: TransportMode[] = ['flight', 'bus', 'drive', 'ferry', 'taxi'];
 
 export type SetTrack = (id: string, track: Tracks[string] | null, gain?: number, mode?: 'file' | 'fill') => Promise<void>;
@@ -272,6 +273,9 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
   const [err, setErr] = useState<string | null>(null);
   const { busy, error, run } = useSave(mutate, onClose);
   const [own, setOwn] = useState(false);
+  const [step, setStep] = useState(0);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  useEffect(() => { document.querySelector('.sheet-body')?.scrollTo(0, 0); }, [step]);
   const [hmode, setHmode] = useState<'link' | 'manual'>(start && !existing && kind === 'hike' ? 'manual' : 'link');
   const [gpx, setGpx] = useState<ParsedTrack | null>(null);
   const [gpxErr, setGpxErr] = useState('');
@@ -429,6 +433,234 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
     });
 
   const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note', meal: 'restaurant', hang: 'night out' }[d.kind];
+  const wizard = isNew && !quick;
+  const titleField = (
+      <Field label={d.kind === 'commute' ? 'Title (optional)' : d.kind === 'meal' ? 'Restaurant' : d.kind === 'hang' ? 'Place or show' : 'Name'}>
+        <input value={d.title} onChange={(e) => up({ title: e.target.value })} autoFocus={isNew} />
+      </Field>
+  );
+  const hikePointsF = (
+          <Field label="Points on the trail" hint="Search or tap the map to add points, then put them in walking order. They are drawn as a line on the map.">
+            <ul className="wp-list">
+              {wps.map((w, i) => (
+                <li key={i}>
+                  <b>{i + 1}</b>
+                  <input value={w.name} aria-label={`Point ${i + 1} name`} onChange={(e) => setWps(wps.map((q, j) => (j === i ? { ...q, name: e.target.value } : q)))} />
+                  <button type="button" className="round small" aria-label="Move up" disabled={i === 0} onClick={() => moveWp(i, -1)}><Icon name="back" size={14} /></button>
+                  <button type="button" className="round small" aria-label="Move down" disabled={i === wps.length - 1} onClick={() => moveWp(i, 1)}><Icon name="next" size={14} /></button>
+                  <button type="button" className="round small" aria-label="Remove point" onClick={() => setWps(wps.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                </li>
+              ))}
+            </ul>
+            {wps.length >= 2 && <p className="small">{wps.length} points · about {Math.round(wpKm * 10) / 10} km in straight lines</p>}
+            <PlaceSearch keepOpen near={wps[wps.length - 1]?.point} onClear={() => {}} onPick={(name, p) => setWps((w) => [...w, { name: name.split(',')[0].trim(), point: p }])} />
+          </Field>
+  );
+  const hikeWhenF = (
+          <div className="two">
+            <Field label="Starts"><input type="time" value={h.startTime ?? ''} onChange={(e) => up({ startTime: e.target.value || undefined })} /></Field>
+            <Field label="Ends"><input type="time" value={h.endTime ?? ''} onChange={(e) => up({ endTime: e.target.value || undefined })} /></Field>
+          </div>
+  );
+  const hikeSizeF = (
+    <>
+          <div className="two">
+            <Field label="Distance (km)"><input type="number" step="0.1" inputMode="decimal" value={h.distanceKm ?? ''} onChange={(e) => up({ distanceKm: num(e.target.value) })} /></Field>
+            <Field label="Climb (m)"><input type="number" inputMode="numeric" value={h.elevationGainM ?? ''} onChange={(e) => up({ elevationGainM: num(e.target.value) })} /></Field>
+          </div>
+          <div className="two">
+            <Field label="Hours"><input type="number" inputMode="numeric" value={dur === undefined ? '' : Math.floor(dur / 60)} onChange={(e) => setDur(e.target.value, String((dur ?? 0) % 60))} /></Field>
+            <Field label="Minutes"><input type="number" inputMode="numeric" value={dur === undefined ? '' : dur % 60} onChange={(e) => setDur(String(Math.floor((dur ?? 0) / 60)), e.target.value)} /></Field>
+          </div>
+          <div className="two">
+            <Field label="Difficulty">
+              <select value={h.difficulty ?? ''} onChange={(e) => up({ difficulty: (e.target.value || undefined) as HikeEntry['difficulty'] })}>
+                <option value="">—</option><option value="easy">Easy</option><option value="moderate">Moderate</option><option value="moderate-hard">Moderate to hard</option><option value="hard">Hard</option>
+              </select>
+            </Field>
+            <Field label="Shape">
+              <select value={h.shape ?? ''} onChange={(e) => up({ shape: (e.target.value || undefined) as HikeEntry['shape'] })}>
+                <option value="">—</option><option value="out-and-back">Out and back</option><option value="loop">Loop</option><option value="circuit">Circuit</option><option value="one-way">One way</option>
+              </select>
+            </Field>
+          </div>
+          <label className="check"><input type="checkbox" checked={!!h.guided} onChange={(e) => up({ guided: e.target.checked })} /> Guided</label>
+    </>
+  );
+  const expWhenF = (
+    <>
+          <div className="two">
+            <Field label="Starts"><input type="time" value={x.startTime ?? ''} onChange={(e) => up({ startTime: e.target.value || undefined })} /></Field>
+            <Field label="Ends"><input type="time" value={x.endTime ?? ''} onChange={(e) => up({ endTime: e.target.value || undefined })} /></Field>
+          </div>
+          <div className="two">
+            <Field label="Hours"><input type="number" inputMode="numeric" value={dur === undefined ? '' : Math.floor(dur / 60)} onChange={(e) => setDur(e.target.value, String((dur ?? 0) % 60))} /></Field>
+            <Field label="Minutes"><input type="number" inputMode="numeric" value={dur === undefined ? '' : dur % 60} onChange={(e) => setDur(String(Math.floor((dur ?? 0) / 60)), e.target.value)} /></Field>
+          </div>
+    </>
+  );
+  const mealWhenF = (
+        <div className="two">
+          <Field label="Time"><input type="time" value={m.time ?? ''} onChange={(e) => up({ time: e.target.value || undefined })} /></Field>
+          <Field label="People"><input type="number" min={1} inputMode="numeric" value={m.partySize ?? ''} onChange={(e) => up({ partySize: num(e.target.value) })} /></Field>
+        </div>
+  );
+  const whereF = (
+      <Field label="Where on the map">
+        <PlaceSearch always current={d.at} onPick={(_, p) => up({ at: p })} onClear={() => up({ at: undefined })} />
+      </Field>
+  );
+  const detailsF = (
+    <>
+
+      <Field label="Notes" hint="One per line. Friends see these."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Heads-up" hint="Things not to forget, like “book ahead”. One per line."><textarea rows={2} value={warn} onChange={(e) => setWarn(e.target.value)} /></Field>
+      <Field label="Private notes" hint="Only you see these."><textarea rows={2} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>
+
+      <div className="links-edit">
+        <h3>Links</h3>
+        {links.map((l, i) => (
+          <div className="link-row" key={i}>
+            <input placeholder="Label" value={l.label} onChange={(e) => setLinks(links.map((q, j) => (j === i ? { ...q, label: e.target.value } : q)))} />
+            <input placeholder="https://…" inputMode="url" value={l.url ?? ''} onChange={(e) => setLinks(links.map((q, j) => (j === i ? { ...q, url: e.target.value } : q)))} />
+            <button type="button" className="round small" aria-label="Remove link" onClick={() => setLinks(links.filter((_, j) => j !== i))}><Icon name="close" size={16} /></button>
+          </div>
+        ))}
+        <button type="button" className="chip" onClick={() => setLinks([...links, { type: 'other', label: '', url: '' }])}>+ Add a link</button>
+      </div>
+
+      <div className="booking-edit">
+        <h3>Booking <small>(only you see this)</small></h3>
+        <div className="two">
+          <Field label="Booked by"><input value={d.booking?.bookedBy ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...d.booking, bookedBy: e.target.value || undefined } })} /></Field>
+          <Field label="Confirmation code"><input value={d.booking?.confirmationCode ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...d.booking, confirmationCode: e.target.value || undefined } })} /></Field>
+        </div>
+      </div>
+      <label className="check"><input type="checkbox" checked={!!d.optional} onChange={(e) => up({ optional: e.target.checked })} /> Optional (only if there’s time)</label>
+      {!isNew && (
+        <Field label="Day">
+          <select value={day} onChange={(e) => setDay(e.target.value)}>
+            {trip.days.map((dd) => <option key={dd.date} value={dd.date}>{dd.date} · {dd.region}</option>)}
+          </select>
+        </Field>
+      )}
+      {!isNew && dayEntries.length > 1 && (
+        <div className="row">
+          <button type="button" className="chip" disabled={pos <= 0 || busy} onClick={() => move(-1)}>Move up</button>
+          <button type="button" className="chip" disabled={pos >= dayEntries.length - 1 || busy} onClick={() => move(1)}>Move down</button>
+        </div>
+      )}
+    </>
+  );
+  const legRoute = (l: Leg, i: number, road: boolean) => (
+    <>
+                <div className="leg-row">
+                  <select value={l.mode} aria-label="How" onChange={(e) => void setMode(i, e.target.value as TransportMode)}>
+                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
+                </div>
+                <Field label="Start (required)">
+                  {l.fromPoint && <p className="pinned">{l.from || 'Pinned spot'}</p>}
+                  <PlaceSearch current={l.fromPoint} near={l.toPoint} onPick={(n, p) => void pickLeg(i, 'from', n, p)} onClear={() => patchLeg(i, { fromPoint: undefined, path: undefined })} />
+                </Field>
+                <Field label="End (required)">
+                  {l.toPoint && <p className="pinned">{l.to || 'Pinned spot'}</p>}
+                  <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => patchLeg(i, { toPoint: undefined, path: undefined })} />
+                </Field>
+                {routing === i && <p className="road">{road ? 'Finding the road…' : 'Working it out…'}</p>}
+                {routing !== i && l.fromPoint && l.toPoint && (road ? l.path : true) && (
+                  <p className="road">
+                    {road ? 'By road' : l.mode === 'ferry' ? (l.path ? 'Along the ferry line' : 'No charted ferry line found, so a straight line') : 'In a straight line'}: {l.distanceKm} km{l.durationMin ? ` · ${minutes(l.durationMin)}` : ''}{road ? ' (no traffic)' : ''}
+                  </p>
+                )}
+                {roadErr && routing !== i && road && !l.path && l.fromPoint && l.toPoint && <p className="auth-error">{roadErr}</p>}
+    </>
+  );
+  const legWhen = (l: Leg, i: number, road: boolean) => (
+    <>
+                {road ? (
+                  <Field label="Leaves at" hint={l.startTime && !l.durationMin ? 'The arrival time is worked out once the trip has a travel time.' : undefined}>
+                    <input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} />
+                    {legTimes(l).end && <p className="road">Arrives about {legTimes(l).end}{legTimes(l).days > 0 ? ' the next day' : ''} (no traffic)</p>}
+                  </Field>
+                ) : (
+                  <div className="two">
+                    <Field label="Departs"><input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} /></Field>
+                    <Field label="Arrives"><input type="time" value={l.endTime ?? ''} onChange={(e) => patchLeg(i, { endTime: e.target.value || undefined })} /></Field>
+                  </div>
+                )}
+                {!road && l.fromPoint && l.toPoint && (
+                  <Field label="Time in minutes" hint="A rough guess. Change it to the timetable if you know it.">
+                    <input type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => patchLeg(i, { durationMin: num(e.target.value) })} />
+                  </Field>
+                )}
+    </>
+  );
+  const commuteRouteF = (
+    <div className="legs-edit">
+      {(c.legs ?? []).map((l: Leg, i: number) => {
+        const road = ROAD.includes(l.mode);
+        return (
+          <div className="drive-leg" key={i}>
+            <div className="leg-row">
+              <select value={l.mode} aria-label="How" onChange={(e) => void setMode(i, e.target.value as TransportMode)}>
+                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
+            </div>
+            {legRoute(l, i, road)}
+          </div>
+        );
+      })}
+      <RouteMini legs={c.legs ?? []} />
+      <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'drive' }] })}>+ Add a leg</button>
+    </div>
+  );
+  const commuteWhenF = (
+    <div className="legs-edit">
+      {(c.legs ?? []).map((l: Leg, i: number) => (
+        <div className="drive-leg" key={i}>
+          <p className="leg-label">{l.mode}{l.from || l.to ? `: ${l.from ?? '…'} to ${l.to ?? '…'}` : ''}</p>
+          {legWhen(l, i, ROAD.includes(l.mode))}
+        </div>
+      ))}
+    </div>
+  );
+  const done = (...v: unknown[]) => v.filter(Boolean).join(' · ');
+  const stepOf = (key: string, title: string, node: ReactNode, summary: string, empty = false): WizStep => ({ key, title, node, summary, empty });
+  const steps: WizStep[] = [];
+  if (d.kind === 'hike') {
+    steps.push(stepOf('name', 'Name and route', <>{titleField}{hikePointsF}</>, done(d.title, wps.length ? `${wps.length} points` : '')));
+    steps.push(stepOf('when', 'When', hikeWhenF, timeSpan(h.startTime, h.endTime) ?? 'Not set', !h.startTime && !h.endTime));
+    steps.push(stepOf('size', 'Distance and difficulty', hikeSizeF, done(h.distanceKm !== undefined && `${h.distanceKm} km`, h.elevationGainM && `+${h.elevationGainM} m`, minutes(h.durationMin), h.difficulty) || 'Not set', h.distanceKm === undefined && !h.durationMin && !h.difficulty));
+  } else if (d.kind === 'commute') {
+    steps.push(stepOf('route', 'Route', commuteRouteF, (c.legs ?? []).map((l) => `${l.mode} ${l.from ?? ''}${l.to ? ` to ${l.to}` : ''}`.trim()).join(', ') || 'Not set'));
+    steps.push(stepOf('when', 'When', commuteWhenF, (c.legs ?? []).map((l) => { const t = legTimes(l); return timeSpan(t.start, t.end, t.days); }).filter(Boolean).join(', ') || 'Not set', !(c.legs ?? []).some((l) => l.startTime || l.endTime)));
+  } else if (d.kind === 'experience') {
+    steps.push(stepOf('name', 'Name', titleField, d.title));
+    steps.push(stepOf('where', 'Where', whereF, d.at ? 'Pinned' : 'Not pinned', !d.at));
+    steps.push(stepOf('when', 'When', expWhenF, done(timeSpan(x.startTime, x.endTime), minutes(x.durationMin)) || 'Not set', !x.startTime && !x.endTime && !x.durationMin));
+  } else if (d.kind === 'meal' || d.kind === 'hang') {
+    steps.push(stepOf('name', 'Name', titleField, d.title));
+    steps.push(stepOf('where', 'Where', whereF, d.at ? 'Pinned' : 'Not pinned', !d.at));
+    steps.push(stepOf('when', 'When', mealWhenF, done(m.time, m.partySize && `${m.partySize} people`) || 'Not set', !m.time && !m.partySize));
+  } else {
+    steps.push(stepOf('name', 'Name', titleField, d.title));
+    steps.push(stepOf('where', 'Where', whereF, d.at ? 'Pinned' : 'Not pinned', !d.at));
+  }
+  steps.push(stepOf('details', 'Notes and details', <>{d.kind === 'commute' ? titleField : null}{detailsF}</>, done(notes.trim() && 'notes', warn.trim() && 'heads-up', priv.trim() && 'private', links.length ? `${links.length} links` : '', d.booking?.confirmationCode && 'booking') || 'Empty'));
+  const last = step >= steps.length - 1;
+  const legsOk = () => {
+    for (const l of c.legs ?? []) if (!(l.fromPoint && l.toPoint) || (ROAD.includes(l.mode) && !l.path)) return 'Pick a start and an end for each leg' + ((c.legs ?? []).some((q) => ROAD.includes(q.mode)) ? ', so the road can be found.' : '.');
+    return null;
+  };
+  const next = () => {
+    const k = steps[step].key;
+    const msg = k === 'name' && !d.title.trim() ? 'Give it a name first.' : k === 'route' ? (routing !== null ? 'Hold on, finding the road…' : legsOk()) : null;
+    setErr(msg);
+    if (!msg) setStep(step + 1);
+  };
   return (
     <Sheet title={isNew ? `New ${kindLabel}` : `Edit ${kindLabel}`} onClose={onClose}>
       {d.kind === 'hike' && isNew && (
@@ -456,171 +688,42 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
       )}
       {!quick && (
       <>
-      <Field label={d.kind === 'commute' ? 'Title (optional)' : d.kind === 'meal' ? 'Restaurant' : d.kind === 'hang' ? 'Place or show' : 'Name'}>
-        <input value={d.title} onChange={(e) => up({ title: e.target.value })} autoFocus={isNew} />
-      </Field>
-
-      {d.kind === 'hike' && (
+      {wizard ? (
+        <div className="wiz">
+          <ol className="wiz-dots" aria-label="Steps">
+            {steps.map((s, i) => <li key={s.key} className={i === step ? 'on' : i < step ? 'done' : ''} />)}
+          </ol>
+          <p className="wiz-title">Step {step + 1} of {steps.length} · <b>{steps[step].title}</b></p>
+          {steps[step].node}
+          {!last && err && <p className="auth-error" role="alert">{err}</p>}
+          {last ? (
+            <div className="wiz-nav">
+      <Actions onSave={save} busy={busy || own || routing !== null} error={err ?? error} />
+              <button type="button" className="chip" onClick={() => { setErr(null); setStep(step - 1); }}>Back</button>
+            </div>
+          ) : (
+            <div className="wiz-nav">
+              <button type="button" className="auth-primary" onClick={next}>{steps[step].empty ? 'Skip' : 'Next'}</button>
+              {step > 0 && <button type="button" className="chip" onClick={() => { setErr(null); setStep(step - 1); }}>Back</button>}
+            </div>
+          )}
+        </div>
+      ) : (
         <>
-          <Field label="Points on the trail" hint="Search or tap the map to add points, then put them in walking order. They are drawn as a line on the map.">
-            <ul className="wp-list">
-              {wps.map((w, i) => (
-                <li key={i}>
-                  <b>{i + 1}</b>
-                  <input value={w.name} aria-label={`Point ${i + 1} name`} onChange={(e) => setWps(wps.map((q, j) => (j === i ? { ...q, name: e.target.value } : q)))} />
-                  <button type="button" className="round small" aria-label="Move up" disabled={i === 0} onClick={() => moveWp(i, -1)}><Icon name="back" size={14} /></button>
-                  <button type="button" className="round small" aria-label="Move down" disabled={i === wps.length - 1} onClick={() => moveWp(i, 1)}><Icon name="next" size={14} /></button>
-                  <button type="button" className="round small" aria-label="Remove point" onClick={() => setWps(wps.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
-                </li>
-              ))}
-            </ul>
-            {wps.length >= 2 && <p className="small">{wps.length} points · about {Math.round(wpKm * 10) / 10} km in straight lines</p>}
-            <PlaceSearch keepOpen near={wps[wps.length - 1]?.point} onClear={() => {}} onPick={(name, p) => setWps((w) => [...w, { name: name.split(',')[0].trim(), point: p }])} />
-          </Field>
-          <div className="two">
-            <Field label="Starts"><input type="time" value={h.startTime ?? ''} onChange={(e) => up({ startTime: e.target.value || undefined })} /></Field>
-            <Field label="Ends"><input type="time" value={h.endTime ?? ''} onChange={(e) => up({ endTime: e.target.value || undefined })} /></Field>
+          <div className="secs">
+            {steps.map((s) => (
+              <section key={s.key} className={openKey === s.key ? 'sec is-open' : 'sec'}>
+                <button type="button" className="sec-head" aria-expanded={openKey === s.key} onClick={() => setOpenKey(openKey === s.key ? null : s.key)}>
+                  <b>{s.title}</b>
+                  <span>{s.summary}</span>
+                </button>
+                {openKey === s.key && <div className="sec-body">{s.node}</div>}
+              </section>
+            ))}
           </div>
-          <div className="two">
-            <Field label="Distance (km)"><input type="number" step="0.1" inputMode="decimal" value={h.distanceKm ?? ''} onChange={(e) => up({ distanceKm: num(e.target.value) })} /></Field>
-            <Field label="Climb (m)"><input type="number" inputMode="numeric" value={h.elevationGainM ?? ''} onChange={(e) => up({ elevationGainM: num(e.target.value) })} /></Field>
-          </div>
-          <div className="two">
-            <Field label="Hours"><input type="number" inputMode="numeric" value={dur === undefined ? '' : Math.floor(dur / 60)} onChange={(e) => setDur(e.target.value, String((dur ?? 0) % 60))} /></Field>
-            <Field label="Minutes"><input type="number" inputMode="numeric" value={dur === undefined ? '' : dur % 60} onChange={(e) => setDur(String(Math.floor((dur ?? 0) / 60)), e.target.value)} /></Field>
-          </div>
-          <div className="two">
-            <Field label="Difficulty">
-              <select value={h.difficulty ?? ''} onChange={(e) => up({ difficulty: (e.target.value || undefined) as HikeEntry['difficulty'] })}>
-                <option value="">—</option><option value="easy">Easy</option><option value="moderate">Moderate</option><option value="moderate-hard">Moderate to hard</option><option value="hard">Hard</option>
-              </select>
-            </Field>
-            <Field label="Shape">
-              <select value={h.shape ?? ''} onChange={(e) => up({ shape: (e.target.value || undefined) as HikeEntry['shape'] })}>
-                <option value="">—</option><option value="out-and-back">Out and back</option><option value="loop">Loop</option><option value="circuit">Circuit</option><option value="one-way">One way</option>
-              </select>
-            </Field>
-          </div>
-          <label className="check"><input type="checkbox" checked={!!h.guided} onChange={(e) => up({ guided: e.target.checked })} /> Guided</label>
-        </>
-      )}
-
-      {d.kind === 'experience' && (
-        <>
-          <div className="two">
-            <Field label="Starts"><input type="time" value={x.startTime ?? ''} onChange={(e) => up({ startTime: e.target.value || undefined })} /></Field>
-            <Field label="Ends"><input type="time" value={x.endTime ?? ''} onChange={(e) => up({ endTime: e.target.value || undefined })} /></Field>
-          </div>
-          <div className="two">
-            <Field label="Hours"><input type="number" inputMode="numeric" value={dur === undefined ? '' : Math.floor(dur / 60)} onChange={(e) => setDur(e.target.value, String((dur ?? 0) % 60))} /></Field>
-            <Field label="Minutes"><input type="number" inputMode="numeric" value={dur === undefined ? '' : dur % 60} onChange={(e) => setDur(String(Math.floor((dur ?? 0) / 60)), e.target.value)} /></Field>
-          </div>
-        </>
-      )}
-
-      {(d.kind === 'meal' || d.kind === 'hang') && (
-        <div className="two">
-          <Field label="Time"><input type="time" value={m.time ?? ''} onChange={(e) => up({ time: e.target.value || undefined })} /></Field>
-          <Field label="People"><input type="number" min={1} inputMode="numeric" value={m.partySize ?? ''} onChange={(e) => up({ partySize: num(e.target.value) })} /></Field>
-        </div>
-      )}
-
-      {d.kind === 'commute' && (
-        <div className="legs-edit">
-          <h3>Legs</h3>
-          {(c.legs ?? []).map((l: Leg, i: number) => {
-            const road = ROAD.includes(l.mode);
-            return (
-              <div className="drive-leg" key={i}>
-                <div className="leg-row">
-                  <select value={l.mode} aria-label="How" onChange={(e) => void setMode(i, e.target.value as TransportMode)}>
-                    {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <button type="button" className="round small" aria-label="Remove leg" onClick={() => up({ legs: c.legs.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
-                </div>
-                <Field label="Start (required)">
-                  {l.fromPoint && <p className="pinned">{l.from || 'Pinned spot'}</p>}
-                  <PlaceSearch current={l.fromPoint} near={l.toPoint} onPick={(n, p) => void pickLeg(i, 'from', n, p)} onClear={() => patchLeg(i, { fromPoint: undefined, path: undefined })} />
-                </Field>
-                <Field label="End (required)">
-                  {l.toPoint && <p className="pinned">{l.to || 'Pinned spot'}</p>}
-                  <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => patchLeg(i, { toPoint: undefined, path: undefined })} />
-                </Field>
-                {road ? (
-                  <Field label="Leaves at" hint={l.startTime && !l.durationMin ? 'The arrival time is worked out once the trip has a travel time.' : undefined}>
-                    <input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} />
-                    {legTimes(l).end && <p className="road">Arrives about {legTimes(l).end}{legTimes(l).days > 0 ? ' the next day' : ''} (no traffic)</p>}
-                  </Field>
-                ) : (
-                  <div className="two">
-                    <Field label="Departs"><input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} /></Field>
-                    <Field label="Arrives"><input type="time" value={l.endTime ?? ''} onChange={(e) => patchLeg(i, { endTime: e.target.value || undefined })} /></Field>
-                  </div>
-                )}
-                {routing === i && <p className="road">{road ? 'Finding the road…' : 'Working it out…'}</p>}
-                {routing !== i && l.fromPoint && l.toPoint && (road ? l.path : true) && (
-                  <p className="road">
-                    {road ? 'By road' : l.mode === 'ferry' ? (l.path ? 'Along the ferry line' : 'No charted ferry line found, so a straight line') : 'In a straight line'}: {l.distanceKm} km{l.durationMin ? ` · ${minutes(l.durationMin)}` : ''}{road ? ' (no traffic)' : ''}
-                  </p>
-                )}
-                {!road && l.fromPoint && l.toPoint && (
-                  <Field label="Time in minutes" hint="A rough guess. Change it to the timetable if you know it.">
-                    <input type="number" inputMode="numeric" value={l.durationMin ?? ''} onChange={(e) => patchLeg(i, { durationMin: num(e.target.value) })} />
-                  </Field>
-                )}
-                {roadErr && routing !== i && road && !l.path && l.fromPoint && l.toPoint && <p className="auth-error">{roadErr}</p>}
-              </div>
-            );
-          })}
-          <RouteMini legs={c.legs ?? []} />
-          <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'drive' }] })}>+ Add a leg</button>
-        </div>
-      )}
-
-      <Field label="Notes" hint="One per line. Friends see these."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
-      <Field label="Heads-up" hint="Things not to forget, like “book ahead”. One per line."><textarea rows={2} value={warn} onChange={(e) => setWarn(e.target.value)} /></Field>
-      <Field label="Private notes" hint="Only you see these."><textarea rows={2} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>
-
-      <div className="links-edit">
-        <h3>Links</h3>
-        {links.map((l, i) => (
-          <div className="link-row" key={i}>
-            <input placeholder="Label" value={l.label} onChange={(e) => setLinks(links.map((q, j) => (j === i ? { ...q, label: e.target.value } : q)))} />
-            <input placeholder="https://…" inputMode="url" value={l.url ?? ''} onChange={(e) => setLinks(links.map((q, j) => (j === i ? { ...q, url: e.target.value } : q)))} />
-            <button type="button" className="round small" aria-label="Remove link" onClick={() => setLinks(links.filter((_, j) => j !== i))}><Icon name="close" size={16} /></button>
-          </div>
-        ))}
-        <button type="button" className="chip" onClick={() => setLinks([...links, { type: 'other', label: '', url: '' }])}>+ Add a link</button>
-      </div>
-
-      <div className="booking-edit">
-        <h3>Booking <small>(only you see this)</small></h3>
-        <div className="two">
-          <Field label="Booked by"><input value={d.booking?.bookedBy ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...d.booking, bookedBy: e.target.value || undefined } })} /></Field>
-          <Field label="Confirmation code"><input value={d.booking?.confirmationCode ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...d.booking, confirmationCode: e.target.value || undefined } })} /></Field>
-        </div>
-      </div>
-
-      <Field label="Where on the map">
-        <PlaceSearch always current={d.at} onPick={(_, p) => up({ at: p })} onClear={() => up({ at: undefined })} />
-      </Field>
-
-      <label className="check"><input type="checkbox" checked={!!d.optional} onChange={(e) => up({ optional: e.target.checked })} /> Optional (only if there’s time)</label>
-
-      {!isNew && (
-        <Field label="Day">
-          <select value={day} onChange={(e) => setDay(e.target.value)}>
-            {trip.days.map((dd) => <option key={dd.date} value={dd.date}>{dd.date} · {dd.region}</option>)}
-          </select>
-        </Field>
-      )}
-      {!isNew && dayEntries.length > 1 && (
-        <div className="row">
-          <button type="button" className="chip" disabled={pos <= 0 || busy} onClick={() => move(-1)}>Move up</button>
-          <button type="button" className="chip" disabled={pos >= dayEntries.length - 1 || busy} onClick={() => move(1)}>Move down</button>
-        </div>
-      )}
       <Actions onSave={save} busy={busy || own || routing !== null} error={err ?? error} onDelete={isNew ? undefined : remove} />
+        </>
+      )}
       </>
       )}
     </Sheet>
