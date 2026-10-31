@@ -71,7 +71,7 @@ declare global {
 let token: { value: string; until: number } | null = null;
 let script: Promise<void> | null = null;
 
-function loadScript(): Promise<void> {
+export function loadScript(): Promise<void> {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
   script ??= new Promise<void>((ok, fail) => {
     const s = document.createElement('script');

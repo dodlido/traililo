@@ -19,6 +19,7 @@ const P: Record<string, ReactElement> = {
   close: <path d="M6 6l12 12M18 6L6 18" />,
   edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  image: (<><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5" /></>),
 };
 
 export function Icon({ name, size = 22 }: { name: string; size?: number }) {

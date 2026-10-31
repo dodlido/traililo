@@ -20,6 +20,8 @@ const sbUrl = process.env.SUPABASE_URL ?? '';
 const sbKey = process.env.SUPABASE_ANON_KEY ?? '';
 // The public id of the Google project that lets people connect Gmail. Empty hides the feature.
 const googleId = process.env.GOOGLE_CLIENT_ID ?? '';
+// The public key (limited to this site) that lets the Google file picker open. Empty hides the Drive photos.
+const googleKey = process.env.GOOGLE_API_KEY ?? '';
 
 mkdirSync('dist', { recursive: true });
 await build({
@@ -33,7 +35,7 @@ await build({
   target: 'es2020',
   jsx: 'automatic',
   loader: { '.json': 'json', '.woff2': 'dataurl', '.png': 'dataurl', '.svg': 'dataurl' },
-  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId) },
+  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId), __GOOGLE_API_KEY__: JSON.stringify(googleKey) },
   logLevel: 'info',
 });
 copyFileSync('src/index.html', 'dist/index.html');

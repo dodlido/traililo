@@ -14,6 +14,7 @@ import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
 import { Plan } from './Plan.tsx';
 import { JournalBlock, JournalEditor } from './Journal.tsx';
+import { DrivePhotosBlock } from './DrivePhotos.tsx';
 import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { PlanCtx } from './Pick.tsx';
@@ -325,7 +326,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       <PlanCtx.Provider value={{ trip, tracks, date: sheet && 'date' in sheet && sheet.date ? sheet.date : sheet?.type === 'stay' ? trip.stays.find((x) => x.id === sheet.id)?.checkIn : undefined }}>
       {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} start={sheet.start} onClose={() => setSheet(null)} />}
-      {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       </PlanCtx.Provider>
@@ -705,6 +706,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         )}
         {stay && <StayLine stay={stay} date={day.date} shared={shared} />}
         <JournalBlock day={day} canWrite={!shared && owner && (editing || day.date <= today.date)} onWrite={() => openSheet({ type: 'journal', date: day.date })} />
+        {!shared && owner && <DrivePhotosBlock day={day} canWrite={editing || day.date <= today.date} mutate={mutate} />}
         {canEdit && (
           <button type="button" className="add-btn" onClick={() => openSheet({ type: 'add', date: day.date })}>
             <Icon name="plus" size={18} /> Add to this day
