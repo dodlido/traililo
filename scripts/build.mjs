@@ -18,6 +18,8 @@ const workerText = {
 // Optional overrides for the database address, e.g. SUPABASE_URL=... SUPABASE_ANON_KEY=... node scripts/build.mjs
 const sbUrl = process.env.SUPABASE_URL ?? '';
 const sbKey = process.env.SUPABASE_ANON_KEY ?? '';
+// The public id of the Google project that lets people connect Gmail. Empty hides the feature.
+const googleId = process.env.GOOGLE_CLIENT_ID ?? '';
 
 mkdirSync('dist', { recursive: true });
 await build({
@@ -31,7 +33,7 @@ await build({
   target: 'es2020',
   jsx: 'automatic',
   loader: { '.json': 'json', '.woff2': 'dataurl', '.png': 'dataurl', '.svg': 'dataurl' },
-  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey) },
+  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId) },
   logLevel: 'info',
 });
 copyFileSync('src/index.html', 'dist/index.html');
