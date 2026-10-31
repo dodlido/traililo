@@ -2,7 +2,7 @@
 // derived from what the owner has, with everything private removed (not merely hidden).
 import type { Trip } from './model.ts';
 
-const PERSONAL = /^Assumed:/i;
+const PERSONAL = /\b(Etay|Lior)\b|^Assumed:/i;
 
 export function publicVersion(full: Trip): Trip {
   const t = structuredClone(full);
@@ -21,6 +21,7 @@ export function publicVersion(full: Trip): Trip {
     if (d.journal && !d.journal.shared) delete d.journal;
     delete d.drivePhotos; // pictures are in the owner's Drive; friends never get the ids
     if (d.stayId && homes.has(d.stayId)) delete d.point;
+    d.entries = d.entries.filter((e) => e.kind !== 'journal'); // the owner's own words never go in the friends' copy
     for (const e of d.entries) {
       delete e.booking;
       delete e.privateNotes;

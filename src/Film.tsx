@@ -589,9 +589,9 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
         )}
         <div className="film-cap">
           <span className="film-eyebrow">
-            <Icon name={st.kind === 'night' ? 'bed' : st.cat === 'hike' ? 'hike' : st.cat === 'food' ? 'fork' : st.cat === 'hang' ? 'cocktail' : 'spark'} size={15} /> {st.eyebrow}
+            <Icon name={st.kind === 'night' ? 'bed' : st.eyebrow === 'Journal' ? 'edit' : st.cat === 'hike' ? 'hike' : st.cat === 'food' ? 'fork' : st.cat === 'hang' ? 'cocktail' : 'spark'} size={15} /> {st.eyebrow}
           </span>
-          <h2 dir="auto">{st.title}</h2>
+          {st.title && <h2 dir="auto">{st.title}</h2>}
           {st.facts.length > 0 && (
             <p className="film-facts">
               {st.facts.map((x) => (

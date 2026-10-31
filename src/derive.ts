@@ -107,6 +107,7 @@ export const kindLabel: Record<Entry['kind'], string> = {
   hike: 'Hike',
   experience: 'Experience',
   note: 'Note',
+  journal: 'Journal',
   meal: 'Restaurant',
   hang: 'Night out',
 };

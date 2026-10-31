@@ -57,12 +57,22 @@ export function DriveGap({ day, index, stay, prevStay, tracks, mutate, openSheet
   const [note, setNote] = useState('');
   const here = index >= 0 ? day.entries[index] : undefined;
   const next = day.entries[index + 1];
-  if (!here && !prevStay) return null;
-  const from: End = here ? endOf(here, tracks) : { name: prevStay!.name, point: prevStay!.point };
+  if (!here && !prevStay && day.entries.length > 0) return null;
+  const journal = (
+    <button type="button" className="gap-journal" onClick={() => openSheet({ type: 'entry', date: day.date, kind: 'journal', at: index + 1 })} aria-label="Add a journal entry here">
+      <Icon name="edit" size={15} /> Journal
+    </button>
+  );
+  const from: End | undefined = here ? endOf(here, tracks) : prevStay ? { name: prevStay.name, point: prevStay.point } : undefined;
   const to: End | undefined = next ? startOf(next, tracks) : stay ? { name: stay.name, point: stay.point ?? day.point } : undefined;
-  if (!to) return null;
-  // two neighbours already in the same spot have nothing between them to drive
-  if (from.point && to.point && flat(from.point, to.point) < 0.3) return null;
+  // nothing to drive between (no neighbour, or two neighbours already in the same spot): the journal can still go here
+  if (!from || !to || (from.point && to.point && flat(from.point, to.point) < 0.3)) {
+    return here || day.entries.length === 0 ? (
+      <div className="drive-gap">
+        <div className="gap-modes">{journal}</div>
+      </div>
+    ) : null;
+  }
 
   const add = async (mode: TransportMode, label: string) => {
     setBusy(mode);
@@ -112,6 +122,7 @@ export function DriveGap({ day, index, stay, prevStay, tracks, mutate, openSheet
             <Icon name={modeIcon(m.mode)} size={15} /> {busy === m.mode ? 'Finding…' : m.label}
           </button>
         ))}
+        {journal}
       </div>
       {note && <p role="status" className="hint">{note}</p>}
     </div>

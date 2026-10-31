@@ -781,3 +781,14 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 
 .film-poster.is-rolling { animation: film-title calc(var(--dur, 6000ms) / var(--speed, 1)) both; pointer-events: none; }
 @keyframes film-title { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+.gap-modes .gap-journal { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: var(--night); border: 1px dashed var(--rule); color: var(--ice); font-size: 13px; cursor: pointer; }
+.entry.kind-journal .journal-line { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; margin: 2px 0 6px; }
+.journal-pins { display: flex; gap: 6px; flex-wrap: wrap; }
+.journal-pins img, .journal-pins .recap-blank { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; display: block; }
+.moment-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.moment-pics button { position: relative; aspect-ratio: 1; padding: 0; border: 2px solid transparent; border-radius: 12px; overflow: hidden; background: var(--ink-2); cursor: pointer; display: grid; place-items: center; color: var(--fog); }
+.moment-pics button.on { border-color: var(--accent); }
+.moment-pics button:disabled { opacity: 0.35; }
+.moment-pics img, .moment-pics .recap-blank { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.moment-pics span { position: absolute; left: 4px; bottom: 3px; font-size: 11px; padding: 0 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; }
