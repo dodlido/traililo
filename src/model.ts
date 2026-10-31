@@ -250,6 +250,8 @@ export interface Trip {
   lines?: RouteLine[];
   /** What to bring. Only the owner sees it. */
   packing?: PackItem[];
+  /** Highlights in the recap that the owner chose to leave out (their keys). */
+  recapHidden?: string[];
   totals: TripTotals;
 }
 

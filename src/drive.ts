@@ -223,11 +223,12 @@ export function pictureSrc(id: string, size = 600): Promise<string> {
   if (!t) {
     t = call(`${DRIVE}/${encodeURIComponent(id)}?fields=thumbnailLink`, {}, 'Google Drive')
       .then((r) => r.json() as Promise<{ thumbnailLink?: string }>)
-      .then((m) => (m.thumbnailLink ? m.thumbnailLink.replace(/=s\d+$/, `=s${size}`) : pictureBlob(id)));
+      .then((m) => m.thumbnailLink ?? pictureBlob(id));
     t.catch(() => thumbs.delete(id));
     thumbs.set(id, t);
   }
-  return t;
+  // the size is applied on the way out, so a small tile and a big cover can share the one lookup
+  return t.then((u) => u.replace(/=s\d+$/, `=s${size}`));
 }
 
 /** Downloads the picture itself with the sign-in and shows it from memory. */

@@ -6,6 +6,7 @@ import { parseGpx } from './gpx.ts';
 import { OpenTrail } from './OpenTrail.tsx';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
+import { RecapView } from './Recap.tsx';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { exportTrip } from './exportTrip.ts';
@@ -50,12 +51,12 @@ const TodayCtx = createContext<Today | null>(null);
 const km = (v: number) => `${Math.round(v * 10) / 10} km`;
 const PERSONAL_NOTE = /^Assumed:/i;
 
-type Route = { tab: 'journey' | 'map' | 'stays' | 'plan'; chapter: number | null };
+type Route = { tab: 'journey' | 'map' | 'stays' | 'plan' | 'recap'; chapter: number | null };
 function parseSub(sub: string, runsLen: number): Route {
   const h = sub.replace(/^\/+/, '');
   const m = /^chapter\/(\d+)$/.exec(h);
   if (m && +m[1] < runsLen) return { tab: 'journey', chapter: +m[1] };
-  if (h === 'map' || h === 'stays' || h === 'plan') return { tab: h, chapter: null };
+  if (h === 'map' || h === 'stays' || h === 'plan' || h === 'recap') return { tab: h, chapter: null };
   return { tab: 'journey', chapter: null };
 }
 const useDesktop = () => {
@@ -290,14 +291,15 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     <div className={`shell${shared ? ' is-shared' : ''}`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
         <div className="page" ref={page}>
-          {route.tab === 'journey' && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
+          {(route.tab === 'journey' || (route.tab === 'recap' && (shared || !bundle.owner))) && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} shared={shared} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
+          {route.tab === 'recap' && !shared && bundle.owner && <RecapView trip={trip} title={title} canEdit mutate={commit} go={go} />}
           {route.tab === 'stays' && <Stays shared={shared} go={go} />}
           {route.tab === 'plan' && !shared && bundle.owner && <Plan trip={trip} mutate={commit} openDay={openDay} base={base} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
         </div>
         <nav className="tabs" aria-label="Sections">
-          <Tab icon="journey" label="Journey" on={route.tab === 'journey'} onClick={() => (route.tab === 'map' ? openDay(active) : go(''))} />
+          <Tab icon="journey" label="Journey" on={route.tab === 'journey' || route.tab === 'recap'} onClick={() => (route.tab === 'map' ? openDay(active) : go(''))} />
           {!desktop && <Tab icon="map" label="Map" on={route.tab === 'map'} onClick={() => go('map')} />}
           <Tab icon="bed" label="Stays" on={route.tab === 'stays'} onClick={() => go('stays')} />
           {bundle.owner && !shared && <Tab icon="flag" label="Plan" on={route.tab === 'plan'} onClick={() => go('plan')} />}
@@ -416,6 +418,17 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
       </header>
 
       <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
+
+      {owner && !shared && (
+        <a className="recap-link" href={`${base}/recap`}>
+          <Icon name="spark" size={22} />
+          <span>
+            <b>Trip recap</b>
+            <small>{today.state === 'before' ? 'Opens when the trip starts' : today.state === 'during' ? 'The highlights so far' : 'The whole trip, with its highlights'}</small>
+          </span>
+          <Icon name="next" size={18} />
+        </a>
+      )}
 
       <div className="strip" role="list" aria-label="The route, by place">
         {runs.map((run, i) => (

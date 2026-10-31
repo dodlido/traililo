@@ -7,6 +7,7 @@ const PERSONAL = /^Assumed:/i;
 export function publicVersion(full: Trip): Trip {
   const t = structuredClone(full);
   delete t.packing;
+  delete t.recapHidden;
   for (const d of t.days) {
     d.todos = [];
     // journal pages stay private unless you chose to show friends
