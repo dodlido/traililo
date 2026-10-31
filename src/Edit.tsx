@@ -1,7 +1,7 @@
 // Editing, for the trip's owner. Everything opens as a bottom sheet; "Save" writes to the database straight away.
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, MealEntry, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
-import { findStayPin, searchPlace, type Found } from './geocode.ts';
+import { findStayPin, nameSpot, parseCoords, searchPlace, type Found } from './geocode.ts';
 import { BOOKING_NOTE, bookingNotes, daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
 import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
@@ -113,6 +113,18 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
     if (!q.trim()) return;
     setBusy(true);
     setErr(null);
+    const c = parseCoords(q);
+    if (c) {
+      if ('hint' in c) setErr(c.hint);
+      else {
+        const name = c.name ?? (await nameSpot(c.point));
+        onPick(name, c.point);
+        setRes(null);
+        setQ('');
+      }
+      setBusy(false);
+      return;
+    }
     try {
       setRes(await searchPlace(q.trim()));
     } catch (e) {
@@ -124,7 +136,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
     <div className="place-search">
       <div className="row">
         <input
-          placeholder="Search a place to pin it on the map"
+          placeholder="Search a place, or paste coordinates or a map link"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setSeen(true)}

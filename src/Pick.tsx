@@ -1,14 +1,21 @@
 // A small map to tap on, for pinning a spot without searching for its name.
-import { createContext, useEffect, useRef } from 'react';
+import { createContext, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Point, Trip } from './model.ts';
 import { nameSpot } from './geocode.ts';
 
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 const STYLE: maplibregl.StyleSpecification = {
   version: 8,
-  sources: { t: { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 16, attribution: 'Tiles © Esri' } },
-  layers: [{ id: 't', type: 'raster', source: 't' }],
+  sources: {
+    t: { type: 'raster', tiles: [`${ESRI}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 16, attribution: 'Tiles © Esri' },
+    sat: { type: 'raster', tiles: [`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`], tileSize: 256, maxzoom: 17, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' },
+  },
+  layers: [
+    { id: 't', type: 'raster', source: 't' },
+    { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } },
+  ],
 };
 
 /** What the editors know about the plan, so a map can show it: the whole trip and the day being worked on. */
@@ -87,6 +94,7 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
   linesRef.current = lines;
   const lineData = (l?: PlanLine[]) => ({ type: 'FeatureCollection' as const, features: (l ?? []).map((x) => ({ type: 'Feature' as const, properties: { color: x.color, dash: x.dash ? 1 : 0 }, geometry: { type: 'LineString' as const, coordinates: x.coords } })) });
   const linesReady = useRef(false);
+  const [sat, setSat] = useState(false);
   const cb = useRef(onPick);
   cb.current = onPick;
   const can = useRef(pickable);
@@ -121,6 +129,14 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Satellite view, for spotting a building or a trailhead where the map has no name for it.
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const put = () => m.setLayoutProperty('sat', 'visibility', sat ? 'visible' : 'none');
+    if (m.isStyleLoaded()) put();
+    else m.once('load', put);
+  }, [sat]);
   // A pin set from outside (a search result) moves the marker and the view.
   const curKey = current ? `${current.lat},${current.lon}` : '';
   useEffect(() => {
@@ -203,7 +219,10 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
   const kinds = [...new Set((plan ?? []).map((x) => x.kind))];
   return (
     <div className="map-pick">
-      <div ref={box} className="map-pick-canvas" role="application" aria-label={pickable ? 'Map: tap to pin a spot' : 'Map of the plan'} />
+      <div className="map-pick-wrap">
+        <div ref={box} className="map-pick-canvas" role="application" aria-label={pickable ? 'Map: tap to pin a spot' : 'Map of the plan'} />
+        <button type="button" className={sat ? 'chip map-pick-sat is-on' : 'chip map-pick-sat'} aria-pressed={sat} onClick={() => setSat(!sat)}>Satellite</button>
+      </div>
       {kinds.length > 0 && (
         <p className="plan-legend" aria-label="What the dots are">
           {kinds.map((k) => <span key={k}><i className={`plan-dot-key ${k}`} />{KIND_LABEL[k]}</span>)}
