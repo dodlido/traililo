@@ -633,9 +633,9 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .fold-head svg { transition: transform 0.15s; }
 .fold-head[aria-expanded='true'] svg { transform: rotate(90deg); }
 
-.drive-gap { display: grid; justify-items: center; margin: -4px 0; position: relative; }
-.drive-gap::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed var(--rule); }
-.drive-gap button { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin: 4px 0; padding: 5px 12px; border-radius: 999px; background: var(--night); border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--rule)); color: var(--accent); font-size: 13px; cursor: pointer; }
-.drive-gap button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drive-gap button:disabled { opacity: 0.6; }
+.drive-gap { display: grid; justify-items: center; gap: 4px; margin: 2px 0 6px; padding: 6px 0; border-top: 1px dashed var(--rule); border-bottom: 1px dashed var(--rule); }
+.drive-gap .gap-to { font-size: 12px; letter-spacing: 0.04em; color: var(--fog); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gap-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.gap-modes button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: var(--night); border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--rule)); color: var(--accent); font-size: 13px; cursor: pointer; }
+.gap-modes button:disabled { opacity: 0.55; }
 .drive-gap .hint { font-size: 13px; color: var(--fog); text-align: center; }
