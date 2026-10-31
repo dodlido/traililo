@@ -648,6 +648,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
     if (!ready || !map || !m || !visible) return;
     map.resize();
     const day = days[activeIdx];
+    if (!day) return;
 
     // the overview shows the whole route as travelled; reading a day greys out what is still to come
     const upTo = showAll ? 9999 : activeIdx;
@@ -719,13 +720,19 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
     const duration = reduced() ? 0 : 900;
     const pad = { top: 64, bottom: 64, left: 56, right: 56 };
     const fit = (pts: Point[], maxZoom: number, padding = pad) => {
+      // a trip with nothing placed on the map yet has no frame to fit; the camera stays where it is
+      const ok = pts.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+      if (ok.length === 0) return;
       const b = new maplibregl.LngLatBounds();
-      pts.forEach((p) => b.extend(lngLat(p)));
+      ok.forEach((p) => b.extend(lngLat(p)));
       map.fitBounds(b, { padding, maxZoom, duration });
     };
     if (showAll) {
-      // the flight in and out of Buenos Aires would shrink Patagonia to a sliver, so the overview frames the south
-      fit(days.map((d) => d.point).filter((p): p is Point => !!p && p.lat < -38), 7, { top: 70, bottom: 56, left: 56, right: 56 });
+      // the flight in and out of Buenos Aires would shrink Patagonia to a sliver, so the overview frames the south;
+      // a trip that never goes that far south is framed by all of its places
+      const placed = days.map((d) => d.point).filter((p): p is Point => !!p);
+      const south = placed.filter((p) => p.lat < -38);
+      fit(south.length ? south : placed, 7, { top: 70, bottom: 56, left: 56, right: 56 });
       crowd.current = 99;
     } else {
       // a day full of stops is framed by the stops, not by where the night ends
