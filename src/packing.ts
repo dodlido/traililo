@@ -36,7 +36,7 @@ export function makePacking(trip: Trip): PackItem[] {
     [G.extra, 'Daypack rain cover'],
     [G.extra, 'Snacks for long hiking days'],
   ];
-  if (hikes) list.push([G.hike, 'Broken-in hiking boots'], [G.hike, 'Daypack, 20 to 30 litres'], [G.hike, 'Trekking poles'], [G.hike, 'Offline maps of the trails (use the Save for offline button)']);
+  if (hikes) list.push([G.hike, 'Broken-in hiking boots'], [G.hike, 'Daypack, 20 to 30 litres'], [G.hike, 'Trekking poles'], [G.hike, 'A maps app with offline maps (Organic Maps or OsmAnd) and the trail files from the "Open in maps app" button']);
   if (hikes >= 8) list.push([G.hike, 'Gaiters for muddy or snowy sections']);
   if (treks) list.push([G.hike, 'Sleeping bag liner'], [G.hike, 'Earplugs for shared dorms'], [G.hike, 'Cash for refugios (cards are often not accepted)']);
   if (countries.size > 1) list.push([G.docs, 'Border papers and a printed car-rental permit for crossings'], [G.docs, 'Small cash in both countries’ currencies']);

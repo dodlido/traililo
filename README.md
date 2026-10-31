@@ -26,14 +26,14 @@ Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_me
 - **Hand-drawn routes**: lines on the map that also appear as entries in the journey and can be edited.
 - **Place search and map fields** everywhere show the whole plan (stays, hikes, activities, travel stops, spots) as labelled dots, plus every trail and drive as lines, centred on the day being edited.
 - **Plan tab** (editors only): what to book per day, weather per region (Open-Meteo), and a packing list.
-- **Offline**: the app shell, map tiles you have viewed and saved packs are cached by the service worker (`public/sw.js`).
+- **Trail files**: every hike with a trail has an "Open in maps app" button. It hands the trail as a GPX file to the phone's share sheet (Organic Maps, CoMaps, Maps.me, OsmAnd, Gaia and so on), or downloads it on a computer. Use that app for offline maps and live tracking; TraiLilo does not store map tiles. The service worker (`public/sw.js`) only keeps the app itself so it opens on a weak signal.
 
 ## Layout
 
 - `src/` React 19 + TypeScript, bundled with esbuild
   - `App.tsx` shell, tabs, sheets; `MapView.tsx` the map; `Edit.tsx` editors and `PlaceSearch`; `Pick.tsx` tap-to-pin map, plan dots and lines, route mini-map
   - `roads.ts`, `ferry.ts`, `autoroute.ts` routing; `backend.ts` Supabase calls and roles; `privacy.ts` the friends' version
-  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `offline.ts`
+  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `OpenTrail.tsx`
 - `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-4.sql` in order
 - `src/config.ts` the project address and public anon key (never put the service-role key anywhere in this repo)
 - `node scripts/build.mjs` builds the site into `dist/`; pushing to `main` publishes it to GitHub Pages
@@ -47,7 +47,7 @@ Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_me
 ## Next steps
 
 1. Create two test accounts and check friend and partner sharing end to end.
-2. Verify on a phone: offline use, real map tiles, weather, and the live routing services.
+2. Verify on a phone: the "Open in maps app" share sheet with the chosen maps app, real map tiles, weather, and the live routing services.
 3. Trip recap page for after the trip.
 4. Photos for places that have none yet; fill in the remaining trail gaps and "needs checking" flags.
 5. Optional per-day "just me" journal setting for partners.
