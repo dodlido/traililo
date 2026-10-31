@@ -300,6 +300,9 @@ const SEAS: { name: string; at: [number, number]; rot: number }[] = [
 
 const dotColor: maplibregl.ExpressionSpecification = ['match', ['get', 'cat'], ...Object.entries(CATS).flatMap(([k, v]) => [k, v.color]), '#ffffff'] as unknown as maplibregl.ExpressionSpecification;
 
+// one shared empty list: a new [] on every render made the follow-the-day effect fire again and again on trips with no extra places
+const NO_POIS: Poi[] = [];
+
 export interface MapEdit { on: boolean; set: (v: boolean) => void; drop: (name: string | undefined, p: { lat: number; lon: number }) => void; dropped: { lat: number; lon: number } | null }
 
 export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }: { trip: Trip; active: string; labelFor: (d: Day) => string; visible: boolean; tracks: Tracks; focus: Focus | null; edit?: MapEdit }) {
@@ -324,7 +327,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
   const [dayCats, setDayCats] = useState<Cat[]>([]);
 
   const days = trip.days;
-  const pois = trip.pois ?? [];
+  const pois = trip.pois ?? NO_POIS;
   const activeIdx = Math.max(0, days.findIndex((d) => d.date === active));
   const segs = useMemo(() => segmentsOf(trip, tracks), [trip, tracks]);
   const pins = useMemo(() => {
