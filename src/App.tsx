@@ -18,7 +18,7 @@ import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { PlanCtx } from './Pick.tsx';
 import { ImportBookings } from './ImportBookings.tsx';
-import { AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
+import { AddDayEditor, AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, saveTrip } from './backend.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
@@ -329,6 +329,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       </PlanCtx.Provider>
+      {sheet?.type === 'addday' && <AddDayEditor trip={trip} mutate={commit} onClose={() => setSheet(null)} />}
       {sheet?.type === 'bookings' && <ImportBookings trip={trip} mutate={commit} onClose={() => setSheet(null)} />}
       {sheet?.type === 'settings' && (
         <SettingsEditor
@@ -396,6 +397,9 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
           <h1>{title}</h1>
           {editing && owner && !shared && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'settings' })}><Icon name="edit" size={16} /> Trip settings</button>
+          )}
+          {editing && owner && !shared && (
+            <button type="button" className="chip" onClick={() => openSheet({ type: 'addday' })}><Icon name="plus" size={16} /> Add days</button>
           )}
           {editing && owner && !shared && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'bookings' })}><Icon name="bed" size={16} /> Import bookings</button>
