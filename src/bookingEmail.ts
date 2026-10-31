@@ -1,3 +1,5 @@
+import type { Stay, StayType } from './model.ts';
+
 // Reads the text of a Booking.com confirmation email (pasted in) into the fields of a stay.
 // It works on labels ("Check-in", "Confirmation number", "PIN code") and is forgiving about layout, so a copy from a
 // phone (label and value on separate lines) and a copy from a computer (label: value) both work.
@@ -229,10 +231,85 @@ export function townOf(address: string): string | undefined {
 }
 
 /** The stay type that fits a name, when the name says so. Hotels are the default, so they return nothing. */
-export function guessType(name: string): 'lodge' | 'refugio' | 'camp' | 'glamping' | undefined {
+export function guessType(name: string): 'lodge' | 'refugio' | 'camp' | 'glamping' | 'other' | undefined {
   if (/refugio/i.test(name)) return 'refugio';
   if (/glamping|domo|dome/i.test(name)) return 'glamping';
   if (/camp(?:ing|site|ground)?\b/i.test(name)) return 'camp';
   if (/lodge|cabin|cabaña|cabana|posada|hosteria|hostería/i.test(name)) return 'lodge';
+  if (/departamento|apartment|apart-?hotel|\bflat\b/i.test(name)) return 'other';
   return undefined;
+}
+
+/** The lines a booking adds to a stay's private notes. They start with fixed words so a later import can replace them. */
+export const BOOKING_NOTE = /^(address|phone|pin|check-in|free cancellation)\b/i;
+export function bookingNotes(r: EmailBooking): string[] {
+  const times =
+    (r.checkInTime || r.checkOutTime) &&
+    [
+      r.checkInTime && `Check-in ${r.checkInTime.includes('–') ? '' : 'from '}${r.checkInTime}`,
+      r.checkOutTime && `check-out ${r.checkOutTime.includes('–') ? '' : 'until '}${r.checkOutTime}`,
+    ]
+      .filter(Boolean)
+      .join(', ');
+  return [
+    r.address && `Address: ${r.address}`,
+    r.phone && `Phone: ${r.phone}`,
+    r.pin && `PIN: ${r.pin}`,
+    r.cancelUntil && `Free cancellation until ${r.cancelUntil}`,
+    times,
+  ].filter((x): x is string => !!x);
+}
+
+// ---------------------------------------------------------------- importing a file of several bookings
+
+
+const addDay = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const SKIP = new Set(['hotel', 'lodge', 'casa', 'home', 'cabana', 'cabaña', 'hosteria', 'hostería', 'posada', 'apartment', 'departamento', 'departamentos']);
+const words = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !SKIP.has(w));
+
+export interface BookingMatch {
+  /** match: same place, fill it in. replace: another place on the same night(s). new: nothing booked those nights. */
+  kind: 'match' | 'replace' | 'new';
+  stay?: Stay;
+}
+
+/** Which of the trip's stays a booking belongs to. */
+export function matchStay(stays: Stay[], b: EmailBooking): BookingMatch {
+  if (!b.checkIn) return { kind: 'new' };
+  const end = b.checkOut ?? addDay(b.checkIn, 1);
+  const overlap = stays.filter((s) => s.checkIn < end && s.checkOut > b.checkIn!);
+  const bw = words(b.name ?? '');
+  const same = overlap.find((s) => words(s.name).some((w) => bw.includes(w)));
+  if (same) return { kind: 'match', stay: same };
+  const first = overlap.find((s) => s.checkIn === b.checkIn) ?? overlap[0];
+  return first ? { kind: 'replace', stay: first } : { kind: 'new' };
+}
+
+/** The stay after a booking is applied to it. A matched stay keeps its own name; a replaced or new one takes the booking's. */
+export function applyBooking(base: Stay | undefined, b: EmailBooking, kind: BookingMatch['kind'], id: string): Stay {
+  const s: Stay = base ? structuredClone(base) : { id, name: '', type: 'hotel', checkIn: b.checkIn!, checkOut: b.checkOut!, nights: 1, notes: [], privateNotes: [] };
+  const rename = kind !== 'match' || !!s.nameIsPlaceholder;
+  if (b.name && rename) s.name = b.name;
+  const t = b.name ? guessType(b.name) : undefined;
+  if (t) s.type = t as StayType;
+  else if (kind !== 'match') s.type = 'hotel';
+  if (b.checkIn) {
+    s.checkIn = b.checkIn;
+    s.nights = b.checkOut ? Math.max(1, daysBetween(b.checkIn, b.checkOut)) : s.nights;
+    s.checkOut = addDay(s.checkIn, s.nights);
+  }
+  const town = b.town ?? (b.address ? townOf(b.address) : undefined);
+  if (town && (rename || !s.location)) s.location = town;
+  s.booking = { ...s.booking, source: 'booking', ...(b.confirmation ? { confirmationCode: b.confirmation } : {}) };
+  delete s.assumed;
+  delete s.nameIsPlaceholder;
+  s.privateNotes = [...s.privateNotes.filter((l) => !BOOKING_NOTE.test(l)), ...bookingNotes(b)];
+  if (kind !== 'match') delete s.point; // a new place needs its own pin
+  return s;
 }

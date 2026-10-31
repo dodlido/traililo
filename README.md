@@ -27,14 +27,14 @@ Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_me
 - **Place search and map fields** everywhere show the whole plan (stays, hikes, activities, travel stops, spots) as labelled dots, plus every trail and drive as lines, centred on the day being edited.
 - **Plan tab** (editors only): what to book per day, weather per region (Open-Meteo), and a packing list.
 - **Trail files**: every hike with a trail has an "Open in maps app" button. It hands the trail as a GPX file to the phone's share sheet (Organic Maps, CoMaps, Maps.me, OsmAnd, Gaia and so on), or downloads it on a computer. Use that app for offline maps and live tracking; TraiLilo does not store map tiles. The service worker (`public/sw.js`) only keeps the app itself so it opens on a weak signal.
-- **Booking import**: in the place-to-sleep editor, paste a Booking.com confirmation email and the form fills in the name, dates, confirmation number, address, phone, PIN, free-cancellation deadline and a map pin. The text is read in the browser (`bookingEmail.ts`) and never stored. The address, phone and PIN go in the private notes, so friends never see them. English emails only; whatever is not found is left blank for you to fill in.
+- **Booking import**: in the place-to-sleep editor, paste a Booking.com confirmation email and the form fills in the name, dates, confirmation number, address, phone, PIN, free-cancellation deadline and a map pin. The text is read in the browser (`bookingEmail.ts`) and never stored. The address, phone and PIN go in the private notes, so friends never see them. English emails only; whatever is not found is left blank for you to fill in. "Import bookings" (on the journey page in edit mode) does the same for a whole file of parsed confirmations at once: it matches each booking to a stay by night and name, shows what it will change, and only saves what you tick.
 
 ## Layout
 
 - `src/` React 19 + TypeScript, bundled with esbuild
   - `App.tsx` shell, tabs, sheets; `MapView.tsx` the map; `Edit.tsx` editors and `PlaceSearch`; `Pick.tsx` tap-to-pin map, plan dots and lines, route mini-map
   - `roads.ts`, `ferry.ts`, `autoroute.ts` routing; `backend.ts` Supabase calls and roles; `privacy.ts` the friends' version
-  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `OpenTrail.tsx`, `bookingEmail.ts`
+  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `OpenTrail.tsx`, `bookingEmail.ts`, `ImportBookings.tsx`
 - `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-4.sql` in order
 - `src/config.ts` the project address and public anon key (never put the service-role key anywhere in this repo)
 - `node scripts/build.mjs` builds the site into `dist/`; pushing to `main` publishes it to GitHub Pages
