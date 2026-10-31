@@ -4,36 +4,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DrivePhoto, Point, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
-import { connectDrive, driveAvailable, driveConnected, driveLink, pictureBlob, pictureSrc } from './drive.ts';
+import { connectDrive, driveAvailable, driveConnected, driveLink } from './drive.ts';
+import { Pic } from './Pic.tsx';
 import { computeRecap, type Moment, type Recap, type RecapChapter, type RecapDay } from './recap.ts';
 import { countryName, longDate, monthShort, dayOfMonth, shortDate, weekday } from './derive.ts';
 import { themeFor } from './scenes.tsx';
-
-/** A picture from Drive, as a background-ready <img>. Shows nothing until Google is connected. */
-function Pic({ photo, ready, size = 900, alt = '' }: { photo?: DrivePhoto; ready: boolean; size?: number; alt?: string }) {
-  const [src, setSrc] = useState('');
-  const [tried, setTried] = useState(false);
-  useEffect(() => {
-    setSrc('');
-    setTried(false);
-    if (!photo || !ready) return;
-    let live = true;
-    pictureSrc(photo.id, size).then(
-      (s) => live && setSrc(s),
-      () => live && setSrc(''),
-    );
-    return () => {
-      live = false;
-    };
-  }, [photo?.id, ready, size]);
-  if (!photo || !src) return <span className="recap-blank" aria-hidden="true" />;
-  const fallback = () => {
-    if (tried) return;
-    setTried(true);
-    pictureBlob(photo.id).then(setSrc, () => setSrc(''));
-  };
-  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={fallback} />;
-}
+import { RecapFilm } from './Film.tsx';
+import { buildFilm } from './film.ts';
 
 function Sketch({ route }: { route: Point[] }) {
   if (route.length < 2) return null;
@@ -157,7 +134,27 @@ export function RecapView({ trip, title, canEdit, mutate, go }: { trip: Trip; ti
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(false);
+  const [film, setFilm] = useState(false);
   const r = useMemo(() => computeRecap(trip), [trip]);
+  const playable = useMemo(() => r.state !== 'before' && !buildFilm(trip, r.upTo, { photos: false }).empty, [trip, r]);
+  // the film is a layer over the page: the back button closes it rather than leaving the recap
+  useEffect(() => {
+    const pop = () => setFilm(false);
+    window.addEventListener('popstate', pop);
+    return () => window.removeEventListener('popstate', pop);
+  }, []);
+  const openFilm = () => {
+    try {
+      history.pushState({ film: 1 }, '');
+    } catch {
+      /* no history */
+    }
+    setFilm(true);
+  };
+  const closeFilm = () => {
+    if ((history.state as { film?: number } | null)?.film) history.back();
+    else setFilm(false);
+  };
   const ready = driveConnected();
   const needSignIn = driveAvailable() && !ready && r.stats.photos > 0;
   const connect = async () => {
@@ -213,8 +210,20 @@ export function RecapView({ trip, title, canEdit, mutate, go }: { trip: Trip; ti
           <p className="eyebrow">{r.state === 'during' ? `Recap so far · day ${r.stats.days}` : 'Recap'}</p>
           <h1>{title}</h1>
           <p className="cover-sub">{dates}</p>
+          {playable && (
+            <button type="button" className="recap-play" onClick={openFilm}>
+              <span className="recap-play-dot">
+                <Icon name="play" size={22} />
+              </span>
+              <span>
+                <b>Play the journey</b>
+                <small>Fly the route, with your pictures and words</small>
+              </span>
+            </button>
+          )}
         </div>
       </header>
+      {film && <RecapFilm trip={trip} title={title} upTo={r.upTo} onClose={closeFilm} />}
 
       {r.state === 'before' ? (
         <p className="recap-empty">The recap starts on day one ({longDate(trip.startDate)}). Until then there is nothing to look back on.</p>

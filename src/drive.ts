@@ -215,6 +215,13 @@ export async function saveToDrive(pic: PickedPicture, folder: string, taken: str
 // ---------------------------------------------------------------- showing them
 
 const thumbs = new Map<string, Promise<string>>();
+const known = new Map<string, string>();
+
+/** The address of a picture that has been looked up already, so it can be shown on the very first draw. */
+export function peekPicture(id: string, size = 600): string | undefined {
+  const u = known.get(id);
+  return u ? u.replace(/=s\d+$/, `=s${size}`) : undefined;
+}
 const blobs = new Map<string, Promise<string>>();
 
 /** A web address the picture can be shown from, at about `size` pixels wide. Needs the sign-in. */
@@ -223,7 +230,8 @@ export function pictureSrc(id: string, size = 600): Promise<string> {
   if (!t) {
     t = call(`${DRIVE}/${encodeURIComponent(id)}?fields=thumbnailLink`, {}, 'Google Drive')
       .then((r) => r.json() as Promise<{ thumbnailLink?: string }>)
-      .then((m) => m.thumbnailLink ?? pictureBlob(id));
+      .then((m) => m.thumbnailLink ?? pictureBlob(id))
+      .then((u) => (known.set(id, u), u));
     t.catch(() => thumbs.delete(id));
     thumbs.set(id, t);
   }
