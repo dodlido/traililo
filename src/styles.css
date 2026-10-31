@@ -519,3 +519,7 @@ html[data-map-base='west'] .map-day button:not(:disabled):active { background: r
 .map .pin.stay.tonight .disc { background: color-mix(in srgb, var(--c) 62%, #000); }
 html[data-map-base='west'] .map .pin.stay.tonight .disc { background: color-mix(in srgb, var(--c) 55%, #1a0f2a); box-shadow: 2px 3px 0 var(--inkb), inset 0 -5px 0 color-mix(in srgb, var(--c) 30%, #000); }
 html[data-map-base='west'] .map .pin.stay.tonight .disc svg, html[data-map-base='west'] .map .pin.stay.tonight .disc svg path { color: var(--paper); stroke: var(--paper); }
+.map.is-editing .map-canvas, .map.is-editing .maplibregl-canvas { cursor: crosshair !important; }
+.map-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 5; margin: 0; padding: 6px 12px; border-radius: 999px; background: rgba(20, 28, 32, 0.85); color: #fff; font-size: 13px; pointer-events: none; max-width: 70%; text-align: center; }
+html[data-map-base='west'] .map-hint { background: rgba(36, 28, 20, 0.85); border: 1px solid rgba(243, 227, 184, 0.35); color: var(--paper); font-family: var(--slab); font-style: italic; }
+.start-note { margin: 0 0 8px; }

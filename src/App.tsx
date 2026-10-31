@@ -5,7 +5,8 @@ import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
-import { MapView, type Focus, type Tracks } from './MapView.tsx';
+import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
+import { nameSpot } from './geocode.ts';
 import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
@@ -74,6 +75,10 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const [editing, setEditing] = useState(() => bundle.owner && fresh.id === bundle.id);
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [dropped, setDropped] = useState<{ lat: number; lon: number } | null>(null);
+  useEffect(() => {
+    if (!sheet) setDropped(null);
+  }, [sheet]);
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
   const [title, setTitle] = useState(bundle.title);
   const [cover, setCover] = useState(bundle.cover);
@@ -190,6 +195,16 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const days = trip.days;
   const activeIdx = Math.max(0, days.findIndex((d) => d.date === active));
   const activeDay = days[activeIdx];
+  const mapEdit: MapEdit = {
+    on: editing,
+    set: setEditing,
+    dropped,
+    drop: async (name, p) => {
+      setDropped(p);
+      const nm = name || (await nameSpot(p));
+      setSheet({ type: 'add', date: active, start: { name: nm, point: p } });
+    },
+  };
 
   const go = (hash: string) => {
     location.hash = hash ? `${base}/${hash}` : base;
@@ -286,7 +301,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       </section>
 
       <section className="map-pane" aria-hidden={!mapVisible}>
-        <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} />
+        <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} edit={bundle.owner && !shared ? mapEdit : undefined} />
         <div className="map-day">
           <button type="button" aria-label="Previous day" onClick={() => step(-1)} disabled={activeIdx === 0}>
             <Icon name="back" size={20} />
@@ -303,12 +318,12 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
         </div>
       </section>
       {toast && <div className={toast.bad ? 'toast bad' : 'toast'} role="status">{toast.text}</div>}
-      {sheet?.type === 'add' && <AddMenu date={sheet.date} open={setSheet} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'add' && <AddMenu date={sheet.date} start={sheet.start} open={setSheet} onClose={() => setSheet(null)} />}
       <PlanCtx.Provider value={{ trip, tracks, date: sheet && 'date' in sheet && sheet.date ? sheet.date : sheet?.type === 'stay' ? trip.stays.find((x) => x.id === sheet.id)?.checkIn : undefined }}>
-      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} onClose={() => setSheet(null)} />}
-      {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} start={sheet.start} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} tripId={bundle.id} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
-      {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       </PlanCtx.Provider>
       {sheet?.type === 'settings' && (

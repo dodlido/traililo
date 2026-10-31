@@ -41,16 +41,16 @@ export function LineRow({ line, canEdit, onEdit, hidden }: { line: RouteLine; ca
   );
 }
 
-export function LineEditor({ trip, mutate, date, id, onClose }: { trip: Trip; mutate: (fn: (t: Trip) => void) => Promise<void>; date: string; id?: string; onClose: () => void }) {
+export function LineEditor({ trip, mutate, date, id, start, onClose }: { trip: Trip; mutate: (fn: (t: Trip) => void) => Promise<void>; date: string; id?: string; start?: { name: string; point: { lat: number; lon: number; approx?: boolean } }; onClose: () => void }) {
   const existing = id ? trip.lines?.find((l) => l.id === id) : undefined;
   const [name, setName] = useState(existing?.name ?? '');
   const [mode, setMode] = useState<RouteLine['mode']>(existing?.mode ?? 'trek');
   const [replace, setReplace] = useState(existing?.replace ?? false);
-  const [stops, setStops] = useState<{ name: string; point: { lat: number; lon: number; approx?: boolean } }[]>(existing?.stops ?? existing?.points.map((point, i) => ({ name: `Point ${i + 1}`, point })) ?? []);
+  const [stops, setStops] = useState<{ name: string; point: { lat: number; lon: number; approx?: boolean } }[]>(existing?.stops ?? existing?.points.map((point, i) => ({ name: `Point ${i + 1}`, point })) ?? (start ? [{ name: start.name.split(',')[0].trim(), point: start.point }] : []));
   const [err, setErr] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const { busy, error, run } = useSave(mutate, onClose);
-  const first = JSON.stringify(existing?.stops ?? existing?.points.map((point, i) => ({ name: `Point ${i + 1}`, point })) ?? []);
+  const first = JSON.stringify(existing?.stops ?? existing?.points.map((point, i) => ({ name: `Point ${i + 1}`, point })) ?? (start ? [{ name: start.name.split(',')[0].trim(), point: start.point }] : []));
   const move = (i: number, dir: -1 | 1) => setStops((s) => { const n = [...s]; const j = i + dir; if (j < 0 || j >= n.length) return s; [n[i], n[j]] = [n[j], n[i]]; return n; });
   const save = async () => {
     setErr(null);

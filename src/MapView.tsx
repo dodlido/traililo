@@ -289,7 +289,12 @@ const SEAS: { name: string; at: [number, number]; rot: number }[] = [
 
 const dotColor: maplibregl.ExpressionSpecification = ['match', ['get', 'cat'], ...Object.entries(CATS).flatMap(([k, v]) => [k, v.color]), '#ffffff'] as unknown as maplibregl.ExpressionSpecification;
 
-export function MapView({ trip, active, labelFor, visible, tracks, focus }: { trip: Trip; active: string; labelFor: (d: Day) => string; visible: boolean; tracks: Tracks; focus: Focus | null }) {
+export interface MapEdit { on: boolean; set: (v: boolean) => void; drop: (name: string | undefined, p: { lat: number; lon: number }) => void; dropped: { lat: number; lon: number } | null }
+
+export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }: { trip: Trip; active: string; labelFor: (d: Day) => string; visible: boolean; tracks: Tracks; focus: Focus | null; edit?: MapEdit }) {
+  const editRef = useRef(edit);
+  editRef.current = edit;
+  const dropMark = useRef<maplibregl.Marker | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -444,12 +449,14 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
       }
       map.on('click', 'site-dots', (ev) => {
+        if (editRef.current?.on) return;
         const f = ev.features?.[0];
         if (!f) return;
         const pr = f.properties ?? {};
         show((f.geometry as GeoPoint).coordinates as [number, number], String(pr.name), String(pr.note ?? ''), undefined, undefined, pr.cat as Cat);
       });
       map.on('click', 'poi-dots', (ev) => {
+        if (editRef.current?.on) return;
         const f = ev.features?.[0];
         if (!f) return;
         const pr = f.properties ?? {};
@@ -457,9 +464,21 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         show(g.coordinates as [number, number], String(pr.name), '', pr.note ? String(pr.note) : undefined, pr.url ? String(pr.url) : undefined, pr.cat as Cat);
       });
       map.on('click', 'trail-line', (ev) => {
+        if (editRef.current?.on) return;
         if (map.queryRenderedFeatures(ev.point, { layers: ['poi-dots', 'site-dots'] }).length) return;
         const f = ev.features?.[0];
         if (f) show(ev.lngLat, String(f.properties?.title ?? 'Trail'), String(f.properties?.facts ?? ''), 'Trail drawn from OpenStreetMap', undefined, 'hike');
+      });
+
+      // in edit mode a tap anywhere starts something new from that spot
+      map.on('click', (ev) => {
+        const e = editRef.current;
+        if (!e?.on) return;
+        const hit = map.queryRenderedFeatures(ev.point, { layers: ['poi-dots', 'site-dots'] })[0];
+        if (hit) {
+          const g = hit.geometry as GeoPoint;
+          e.drop(String(hit.properties?.name ?? ''), { lat: g.coordinates[1], lon: g.coordinates[0] });
+        } else e.drop(undefined, { lat: Math.round(ev.lngLat.lat * 1e5) / 1e5, lon: Math.round(ev.lngLat.lng * 1e5) / 1e5 });
       });
 
       const el = document.createElement('div');
@@ -746,10 +765,20 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
     };
   }, [ready, activeIdx]);
 
+  // the spot being added from, while its sheet is open
+  const dropKey = edit?.dropped ? `${edit.dropped.lat},${edit.dropped.lon}` : '';
+  useEffect(() => {
+    const map = mapRef.current;
+    dropMark.current?.remove();
+    dropMark.current = null;
+    if (map && edit?.dropped) dropMark.current = new maplibregl.Marker({ color: '#9a8cf0' }).setLngLat([edit.dropped.lon, edit.dropped.lat]).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, dropKey]);
+
   const noTiles = tiles.bad >= 3 && tiles.ok === 0;
   const legendCats = (['stay', 'hike', 'sight', 'view', 'lake', 'waterfall', 'water', 'thermal', 'bike', 'transport', 'car', 'town'] as Cat[]).filter((c) => legend || dayCats.includes(c));
   return (
-    <div className="map">
+    <div className={edit?.on ? 'map is-editing' : 'map'}>
       <div className="map-canvas" ref={box} role="application" aria-label="Route map of the trip, up to the day you are reading" />
       <div className="map-ui">
         <button type="button" onClick={() => setShowAll(true)} aria-pressed={showAll}>
@@ -761,7 +790,13 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus }: { tr
         <button type="button" aria-label="Zoom out" onClick={() => mapRef.current?.zoomOut()}>
           −
         </button>
+        {edit && (
+          <button type="button" aria-pressed={edit.on} onClick={() => edit.set(!edit.on)}>
+            {edit.on ? 'Done' : 'Edit'}
+          </button>
+        )}
       </div>
+      {edit?.on && <p className="map-hint">Tap anywhere on the map to add something there</p>}
       <div className="map-base" role="group" aria-label="Map style">
         {BASES.map((b) => (
           <button key={b.id} type="button" aria-pressed={base === b.id} onClick={() => setBase(b.id)}>
