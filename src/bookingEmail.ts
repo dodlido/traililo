@@ -1,6 +1,6 @@
-import type { Stay, StayType } from './model.ts';
+import type { Point, Stay, StayType } from './model.ts';
 
-// Reads the text of a Booking.com confirmation email (pasted in) into the fields of a stay.
+// Reads the text of a Booking.com or Airbnb confirmation email (pasted in) into the fields of a stay.
 // It works on labels ("Check-in", "Confirmation number", "PIN code") and is forgiving about layout, so a copy from a
 // phone (label and value on separate lines) and a copy from a computer (label: value) both work.
 // English and Hebrew wording. Whatever it cannot find is simply left out, and the person checks the rest before saving.
@@ -21,6 +21,14 @@ export interface EmailBooking {
   /** As written in the email, for example "14:00" or "14:00–23:00". */
   checkInTime?: string;
   checkOutTime?: string;
+  /** Which site the email came from. Booking.com when not said. */
+  source?: 'booking' | 'airbnb';
+  /** The exact position, when the email's map link carries it. `approx` when the address is only an area. */
+  point?: Point;
+  /** The host's first name (Airbnb). */
+  host?: string;
+  /** The listing's web address (Airbnb). */
+  listing?: string;
   /** Things the reader should double-check, in plain words. */
   warnings: string[];
 }
@@ -116,9 +124,109 @@ function tidyName(s: string): string | undefined {
   return n;
 }
 
+
+// ---------------------------------------------------------------- Airbnb
+
+const clock = (h: string, min: string, ap?: string) => {
+  let n = +h;
+  if (ap) n = (n % 12) + (/^p/i.test(ap) ? 12 : 0);
+  return `${String(n).padStart(2, '0')}:${min}`;
+};
+/** The emails print headings in capitals ("BEACH HOUSE"). Bring those back to normal capitals; leave mixed-case text alone. */
+const titleCase = (s: string) =>
+  s === s.toUpperCase() && /\p{L}/u.test(s) ? s.toLocaleLowerCase().replace(/(^|[\s(/-])(\p{L})/gu, (_, a: string, b: string) => a + b.toLocaleUpperCase()) : s;
+
+function looksLikeAirbnb(text: string): boolean {
+  return /\bairbnb\b/i.test(text) && /confirmation code|hosted by|you.?re all set for|check-?in\s+check-?out/i.test(text);
+}
+
+function parseAirbnb(text: string, lines: string[]): EmailBooking {
+  const warnings: string[] = [];
+  const out: EmailBooking = { source: 'airbnb', warnings };
+
+  const codes = [
+    ...text.matchAll(/confirmation code\s*[:#]?\s*([A-Z0-9]{8,12})\b/gi),
+    ...text.matchAll(/[?&]code=([A-Z0-9]{8,12})\b/g),
+    ...text.matchAll(/\b(HM[A-Z0-9]{8})\b/g),
+  ].map((m) => m[1]);
+  const code = codes.find((c) => /^[A-Z0-9]+$/.test(c)); // Airbnb codes are capitals and digits, and some have no digits
+  if (code) out.confirmation = code;
+
+  // "Check-in Checkout" is a header over both columns, so the first two dates after it are the arrival and the departure
+  const head = text.search(/check[\s-]?in\s*[,/]?\s*check[\s-]?out/i);
+  const from = head >= 0 ? head : text.search(/check[\s-]?in/i);
+  if (from >= 0) {
+    const block = text.slice(from, from + 420);
+    const ds = findDates(block);
+    if (ds[0]) out.checkIn = ds[0].iso;
+    if (ds[1]) out.checkOut = ds[1].iso;
+    const stop = block.search(/\b(?:address|guests)\b/i);
+    const times = [...(stop > 0 ? block.slice(0, stop) : block).matchAll(/(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)?/g)];
+    if (times[0]) out.checkInTime = clock(times[0][1], times[0][2], times[0][3]);
+    if (times[1]) out.checkOutTime = clock(times[1][1], times[1][2], times[1][3]);
+  }
+  if (out.checkIn && out.checkOut && daysBetween(out.checkIn, out.checkOut) < 1) {
+    warnings.push('The check-out date is not after the check-in date. Check the dates.');
+    delete out.checkOut;
+    delete out.checkOutTime;
+  }
+
+  // the address runs over a few lines, up to "Get directions"
+  const ai = lines.findIndex((l) => /^address$/i.test(l));
+  if (ai >= 0) {
+    const parts: string[] = [];
+    for (const l of lines.slice(ai + 1, ai + 5)) {
+      if (/^(get directions|guests|show more|\[?https?:)/i.test(l)) break;
+      parts.push(l);
+    }
+    const a = parts.join(' ').trim();
+    if (a.length > 4) out.address = a;
+  }
+
+  // the map link holds the exact position. An address that is only a postcode and a town is an area, so the pin is approximate.
+  const ll = text.match(/(?:daddr|[?&]q|[?&]ll|[?&]query)=(-?\d{1,3}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i);
+  if (ll && Math.abs(+ll[1]) <= 90 && Math.abs(+ll[2]) <= 180) {
+    const area = !out.address || /^\d{5,}(?!\d)/.test(out.address); // starts with a postcode and no street
+    out.point = { lat: +ll[1], lon: +ll[2], ...(area ? { approx: true } : {}) };
+  }
+
+  const host = text.match(/hosted by ([^\n]+)/i)?.[1] ?? text.match(/^\s*(.+?) is your host\b/im)?.[1];
+  if (host) out.host = titleCase(host.replace(/\s*\[?https?:\S*/g, '').trim());
+  const tel = text.match(/\[tel:([^\]]+)\]/)?.[1];
+  const hostBlock = text.slice(Math.max(0, text.search(/message host/i)), 600 + Math.max(0, text.search(/message host/i)));
+  const phone = tel ?? hostBlock.match(/\+\d[\d\s().-]{7,18}\d/)?.[0];
+  if (phone) out.phone = phone.replace(/\s+/g, ' ').trim();
+
+  // the listing's title sits on the line above "<room type> hosted by <host>"
+  const hi = lines.findIndex((l) => /hosted by/i.test(l));
+  for (let i = hi - 1; hi > 0 && i >= Math.max(0, hi - 3) && !out.name; i--) {
+    const l = lines[i].replace(/\s*\[?https?:\S*\]?/g, '').trim();
+    if (l && !/^you.?re all set/i.test(l)) out.name = tidyName(titleCase(l));
+  }
+  if (!out.name) out.name = tidyName(titleCase(text.match(/reservation for (.+?),\s+[A-Za-z]{3}\s+\d/i)?.[1] ?? text.match(/booking request sent for ([^\n]+)/i)?.[1] ?? ''));
+  const town = text.match(/you.?re all set for ([^\n]+)/i)?.[1]?.trim();
+  if (town && town.length < 60) out.town = titleCase(town.replace(/[.!]+$/, ''));
+  const listing = text.match(/airbnb\.[a-z.]+\/rooms\/(\d{5,})/i)?.[1];
+  if (listing) out.listing = `https://www.airbnb.com/rooms/${listing}`;
+
+  // "Free cancellation before 3:00 PM on February 28." has no year: it is the one before the check-in
+  const c = text.match(/free cancellation before\s+(\d{1,2}):(\d{2})\s*([AP]M)?\s+on\s+([A-Za-z]{3,9})\s+(\d{1,2})/i);
+  if (c && out.checkIn) {
+    const m = monthNum(c[4]);
+    let d = iso(+out.checkIn.slice(0, 4), m, +c[5]);
+    if (d && d > out.checkIn) d = iso(+out.checkIn.slice(0, 4) - 1, m, +c[5]);
+    if (d) out.cancelUntil = `${plain(d)} ${clock(c[1], c[2], c[3])}`;
+  }
+
+  if (!out.name) warnings.push('I could not find the place name. Type it in.');
+  if (!out.checkIn) warnings.push('I could not find the check-in date.');
+  return out;
+}
+
 export function parseBookingEmail(input: string): EmailBooking {
   const text = clean(input);
   const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (looksLikeAirbnb(text)) return parseAirbnb(text, lines);
   const warnings: string[] = [];
   const out: EmailBooking = { warnings };
 
@@ -265,7 +373,7 @@ export function guessType(name: string): 'lodge' | 'refugio' | 'camp' | 'glampin
 }
 
 /** The lines a booking adds to a stay's private notes. They start with fixed words so a later import can replace them. */
-export const BOOKING_NOTE = /^(address|phone|pin|check-in|free cancellation)\b/i;
+export const BOOKING_NOTE = /^(?:(?:address|phone|pin|check-in|free cancellation)\b|(?:host|listing):)/i;
 export function bookingNotes(r: EmailBooking): string[] {
   const times =
     (r.checkInTime || r.checkOutTime) &&
@@ -278,9 +386,11 @@ export function bookingNotes(r: EmailBooking): string[] {
   return [
     r.address && `Address: ${r.address}`,
     r.phone && `Phone: ${r.phone}`,
+    r.host && `Host: ${r.host}`,
     r.pin && `PIN: ${r.pin}`,
     r.cancelUntil && `Free cancellation until ${r.cancelUntil}`,
     times,
+    r.listing && `Listing: ${r.listing}`,
   ].filter((x): x is string => !!x);
 }
 
@@ -320,9 +430,10 @@ export function applyBooking(base: Stay | undefined, b: EmailBooking, kind: Book
   const s: Stay = base ? structuredClone(base) : { id, name: '', type: 'hotel', checkIn: b.checkIn!, checkOut: b.checkOut!, nights: 1, notes: [], privateNotes: [] };
   const rename = kind !== 'match' || !!s.nameIsPlaceholder;
   if (b.name && rename) s.name = b.name;
-  const t = b.name ? guessType(b.name) : undefined;
+  const air = b.source === 'airbnb';
+  const t = b.name && !air ? guessType(b.name) : undefined; // an Airbnb is an Airbnb, whatever its name says
   if (t) s.type = t as StayType;
-  else if (kind !== 'match') s.type = 'hotel';
+  else if (kind !== 'match') s.type = air ? 'airbnb' : 'hotel';
   if (b.checkIn) {
     s.checkIn = b.checkIn;
     s.nights = b.checkOut ? Math.max(1, daysBetween(b.checkIn, b.checkOut)) : s.nights;
@@ -330,10 +441,12 @@ export function applyBooking(base: Stay | undefined, b: EmailBooking, kind: Book
   }
   const town = b.town ?? (b.address ? townOf(b.address) : undefined);
   if (town && (rename || !s.location)) s.location = town;
-  s.booking = { ...s.booking, source: 'booking', ...(b.confirmation ? { confirmationCode: b.confirmation } : {}) };
+  s.booking = { ...s.booking, source: b.source ?? 'booking', ...(b.confirmation ? { confirmationCode: b.confirmation } : {}) };
   delete s.assumed;
   delete s.nameIsPlaceholder;
-  s.privateNotes = [...s.privateNotes.filter((l) => !BOOKING_NOTE.test(l)), ...bookingNotes(b)];
+  const addr = b.address?.trim().toLowerCase();
+  s.privateNotes = [...s.privateNotes.filter((l) => !BOOKING_NOTE.test(l) && l.trim().toLowerCase() !== addr), ...bookingNotes(b)]; // a bare address line from before is now the "Address:" line
   if (kind !== 'match') delete s.point; // a new place needs its own pin
+  if (b.point && (!s.point || s.point.approx || !b.point.approx)) s.point = { ...b.point }; // the email's own position beats a guess
   return s;
 }

@@ -611,7 +611,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const [mail, setMail] = useState('');
   const [mailMsg, setMailMsg] = useState<string[] | null>(null);
   const [mailBusy, setMailBusy] = useState(false);
-  /** Fills the form from a pasted Booking.com confirmation email. The form is the review: nothing is saved until Save. */
+  /** Fills the form from a pasted Booking.com or Airbnb confirmation email. The form is the review: nothing is saved until Save. */
   const readMail = async () => {
     const r = parseBookingEmail(mail);
     if (!r.name && !r.confirmation && !r.checkIn && !r.address) return setMailMsg(['I could not find booking details in that text. Paste the whole email, from the top.']);
@@ -620,7 +620,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
     const patch: Partial<Stay> = {};
     if (r.name) {
       patch.name = r.name;
-      const t = guessType(r.name);
+      const t = r.source === 'airbnb' ? 'airbnb' : guessType(r.name);
       if (t) patch.type = t;
       got.push('name');
     }
@@ -641,10 +641,13 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
       ...q,
       ...patch,
       assumed: undefined,
-      booking: { ...q.booking, source: 'booking', ...(r.confirmation ? { confirmationCode: r.confirmation } : {}) },
+      booking: { ...q.booking, source: r.source ?? 'booking', ...(r.confirmation ? { confirmationCode: r.confirmation } : {}) },
     }));
     setMailMsg([`Filled in: ${got.join(', ') || 'nothing'}. Check it below before saving.`, ...notes]);
-    if (r.name || r.address) {
+    if (r.point) {
+      setS((q) => ({ ...q, point: r.point }));
+      setMailMsg((m) => [...(m ?? []), r.point!.approx ? 'The map pin is only the area, because the exact spot is not given. Move it if you can.' : 'The pin comes from the email’s map link. Check it below.']);
+    } else if (r.name || r.address) {
       setMailBusy(true);
       const pin = await findStayPin(r.name ?? '', r.address);
       setMailBusy(false);
@@ -680,7 +683,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   return (
     <Sheet title={existing ? 'Edit place to sleep' : 'New place to sleep'} onClose={onClose}>
       <details className="import-mail" open={!existing && !s.name}>
-        <summary>Fill in from a Booking.com confirmation email</summary>
+        <summary>Fill in from a Booking.com or Airbnb confirmation email</summary>
         <p className="hint">Open the confirmation email, select everything, copy it, and paste it here. It is read on this device only and is not saved.</p>
         <textarea rows={4} value={mail} placeholder="Paste the email here" onChange={(e) => setMail(e.target.value)} />
         <button type="button" className="chip" disabled={!mail.trim() || mailBusy} onClick={readMail}>{mailBusy ? 'Looking on the map…' : 'Read the email'}</button>

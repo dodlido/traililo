@@ -1,4 +1,4 @@
-// Fills in several stays at once from a file of parsed Booking.com confirmations.
+// Fills in several stays at once from a file of parsed booking confirmations.
 // Each booking is matched to a stay by night and name, and shown for approval before anything is saved.
 import { useMemo, useState } from 'react';
 import type { Stay, Trip } from './model.ts';
@@ -65,7 +65,7 @@ export function ImportBookings({ trip, mutate, onClose }: { trip: Trip; mutate: 
     for (let i = 0; i < chosen.length; i++) {
       const { b, m } = chosen[i];
       const s = applyBooking(m.stay, b, m.kind, m.stay?.id ?? `stay-${Math.random().toString(36).slice(2, 8)}`);
-      if (!s.point || s.point.approx) {
+      if ((!s.point || s.point.approx) && !b.point) {
         setProgress(`Finding map pins… ${i + 1} of ${chosen.length}`);
         if (i) await sleep(1100);
         const pin = await findStayPin(s.name, b.address);
@@ -79,7 +79,7 @@ export function ImportBookings({ trip, mutate, onClose }: { trip: Trip; mutate: 
     });
   };
   const n = rows?.filter((r) => r.on).length ?? 0;
-  const what = (b: EmailBooking) => [b.confirmation && 'confirmation', b.address && 'address', b.phone && 'phone', b.pin && 'PIN', b.cancelUntil && 'cancel-by'].filter(Boolean).join(', ');
+  const what = (b: EmailBooking) => [b.confirmation && 'confirmation', b.address && 'address', b.phone && 'phone', b.pin && 'PIN', b.cancelUntil && 'cancel-by', b.point && 'map pin'].filter(Boolean).join(', ');
 
   return (
     <Sheet title="Import bookings" onClose={onClose}>
