@@ -524,3 +524,6 @@ html[data-map-base='west'] .map-hint { background: rgba(36, 28, 20, 0.85); borde
 .import-mail textarea { width: 100%; margin: 8px 0; }
 .import-mail .hint { margin: 8px 0 0; font-size: 0.85em; opacity: 0.75; }
 .import-msg { margin: 8px 0 0; padding-left: 18px; font-size: 0.9em; }
+.import-rows { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
+.import-rows .check { align-items: flex-start; }
+.import-sub { display: block; margin-top: 2px; opacity: 0.75; font-size: 0.85em; }

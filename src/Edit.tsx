@@ -2,7 +2,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { findStayPin, searchPlace, type Found } from './geocode.ts';
-import { daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
+import { BOOKING_NOTE, bookingNotes, daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
 import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
@@ -21,7 +21,8 @@ export type SheetState =
   | { type: 'day'; date: string }
   | { type: 'journal'; date: string }
   | { type: 'line'; date: string; id?: string; start?: Start }
-  | { type: 'settings' };
+  | { type: 'settings' }
+  | { type: 'bookings' };
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
 const rid = () => Math.random().toString(36).slice(2, 7);
@@ -634,15 +635,8 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
     if (town) patch.location = town;
     if (r.confirmation) got.push('confirmation number');
     if (r.address) got.push('address');
-    const mine = [
-      r.address && `Address: ${r.address}`,
-      r.phone && `Phone: ${r.phone}`,
-      r.pin && `PIN: ${r.pin}`,
-      r.cancelUntil && `Free cancellation until ${r.cancelUntil}`,
-      (r.checkInTime || r.checkOutTime) &&
-        [r.checkInTime && `Check-in ${r.checkInTime.includes('–') ? '' : 'from '}${r.checkInTime}`, r.checkOutTime && `check-out ${r.checkOutTime.includes('–') ? '' : 'until '}${r.checkOutTime}`].filter(Boolean).join(', '),
-    ].filter((x): x is string => !!x);
-    setPriv((p) => [...lines(p).filter((l) => !/^(address|phone|pin|check-in|free cancellation)\b/i.test(l)), ...mine].join('\n'));
+    const mine = bookingNotes(r);
+    setPriv((p) => [...lines(p).filter((l) => !BOOKING_NOTE.test(l)), ...mine].join('\n'));
     setS((q) => ({
       ...q,
       ...patch,
