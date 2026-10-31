@@ -538,3 +538,22 @@ html[data-map-base='west'] .map-hint { background: rgba(36, 28, 20, 0.85); borde
 .camp-tag svg { flex: none; }
 .map .pin.stay.camp .disc, .map-canvas.far .pin.stay.camp .disc { border-radius: 50%; }
 html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4px 4px; }
+
+/* step-by-step entry form */
+.wiz { display: grid; gap: 14px; }
+.wiz-dots { display: flex; gap: 6px; margin: 0; padding: 0; }
+.wiz-dots li { flex: 1; height: 5px; border-radius: 3px; background: var(--ink-2); }
+.wiz-dots li.done { background: var(--fog); }
+.wiz-dots li.on { background: var(--accent); }
+.wiz-title { margin: 0; font-size: 13px; color: var(--fog); }
+.wiz-title b { color: var(--ice); font-weight: 600; }
+.wiz-nav { display: grid; gap: 10px; padding-top: 6px; }
+.wiz-nav .chip { justify-content: center; }
+.secs { display: grid; gap: 8px; }
+.sec { border-radius: 14px; background: var(--ink-2); overflow: hidden; }
+.sec-head { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sec-head b { font-weight: 600; white-space: nowrap; }
+.sec-head span { font-size: 13px; color: var(--fog); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sec.is-open .sec-head span { display: none; }
+.sec-body { display: grid; gap: 12px; padding: 4px 14px 14px; }
+.leg-label { margin: 0; font-size: 13px; font-weight: 600; text-transform: capitalize; }
