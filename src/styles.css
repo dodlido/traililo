@@ -517,3 +517,10 @@ html[data-map-base='west'] .map .pin.stay.tonight .disc svg, html[data-map-base=
 .map-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 5; margin: 0; padding: 6px 12px; border-radius: 999px; background: rgba(20, 28, 32, 0.85); color: #fff; font-size: 13px; pointer-events: none; max-width: 70%; text-align: center; }
 html[data-map-base='west'] .map-hint { background: rgba(36, 28, 20, 0.85); border: 1px solid rgba(243, 227, 184, 0.35); color: var(--paper); font-family: var(--slab); font-style: italic; }
 .start-note { margin: 0 0 8px; }
+
+/* paste a booking confirmation to fill in a stay */
+.import-mail { border: 1px dashed var(--rule); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
+.import-mail summary { cursor: pointer; font-weight: 600; }
+.import-mail textarea { width: 100%; margin: 8px 0; }
+.import-mail .hint { margin: 8px 0 0; font-size: 0.85em; opacity: 0.75; }
+.import-msg { margin: 8px 0 0; padding-left: 18px; font-size: 0.9em; }

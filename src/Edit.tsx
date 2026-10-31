@@ -1,7 +1,8 @@
 // Editing, for the trip's owner. Everything opens as a bottom sheet; "Save" writes to the database straight away.
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
-import { searchPlace, type Found } from './geocode.ts';
+import { findStayPin, searchPlace, type Found } from './geocode.ts';
+import { daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
 import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
@@ -606,6 +607,59 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const [err, setErr] = useState<string | null>(null);
   const { busy, error, run } = useSave(mutate, onClose);
   const up = (p: Partial<Stay>) => setS((q) => ({ ...q, ...p }));
+  const [mail, setMail] = useState('');
+  const [mailMsg, setMailMsg] = useState<string[] | null>(null);
+  const [mailBusy, setMailBusy] = useState(false);
+  /** Fills the form from a pasted Booking.com confirmation email. The form is the review: nothing is saved until Save. */
+  const readMail = async () => {
+    const r = parseBookingEmail(mail);
+    if (!r.name && !r.confirmation && !r.checkIn && !r.address) return setMailMsg(['I could not find booking details in that text. Paste the whole email, from the top.']);
+    const got: string[] = [];
+    const notes: string[] = [...r.warnings];
+    const patch: Partial<Stay> = {};
+    if (r.name) {
+      patch.name = r.name;
+      const t = guessType(r.name);
+      if (t) patch.type = t;
+      got.push('name');
+    }
+    if (r.checkIn) {
+      if (trip.days.some((dd) => dd.date === r.checkIn)) {
+        patch.checkIn = r.checkIn;
+        if (r.checkOut) patch.nights = daysBetween(r.checkIn, r.checkOut);
+        got.push('dates');
+      } else notes.push(`The check-in date (${r.checkIn}) is outside this trip, so I left the dates alone.`);
+    }
+    const town = s.location ? undefined : r.town ?? (r.address ? townOf(r.address) : undefined);
+    if (town) patch.location = town;
+    if (r.confirmation) got.push('confirmation number');
+    if (r.address) got.push('address');
+    const mine = [
+      r.address && `Address: ${r.address}`,
+      r.phone && `Phone: ${r.phone}`,
+      r.pin && `PIN: ${r.pin}`,
+      r.cancelUntil && `Free cancellation until ${r.cancelUntil}`,
+      (r.checkInTime || r.checkOutTime) &&
+        [r.checkInTime && `Check-in ${r.checkInTime.includes('–') ? '' : 'from '}${r.checkInTime}`, r.checkOutTime && `check-out ${r.checkOutTime.includes('–') ? '' : 'until '}${r.checkOutTime}`].filter(Boolean).join(', '),
+    ].filter((x): x is string => !!x);
+    setPriv((p) => [...lines(p).filter((l) => !/^(address|phone|pin|check-in|free cancellation)\b/i.test(l)), ...mine].join('\n'));
+    setS((q) => ({
+      ...q,
+      ...patch,
+      assumed: undefined,
+      booking: { ...q.booking, source: 'booking', ...(r.confirmation ? { confirmationCode: r.confirmation } : {}) },
+    }));
+    setMailMsg([`Filled in: ${got.join(', ') || 'nothing'}. Check it below before saving.`, ...notes]);
+    if (r.name || r.address) {
+      setMailBusy(true);
+      const pin = await findStayPin(r.name ?? '', r.address);
+      setMailBusy(false);
+      if (pin) {
+        setS((q) => ({ ...q, point: pin.point }));
+        setMailMsg((m) => [...(m ?? []), pin.exact ? 'Found it on the map. Check the pin below.' : 'Only the area was found on the map, so the pin is approximate. Move it if you can.'].filter(Boolean));
+      } else setMailMsg((m) => [...(m ?? []), 'I could not find it on the map. Search for it below.']);
+    }
+  };
   const save = () => {
     if (!s.name.trim()) return setErr('Give the place a name.');
     setErr(null);
@@ -631,6 +685,13 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const types: StayType[] = ['hotel', 'airbnb', 'lodge', 'refugio', 'camp', 'glamping', 'other'];
   return (
     <Sheet title={existing ? 'Edit place to sleep' : 'New place to sleep'} onClose={onClose}>
+      <details className="import-mail" open={!existing && !s.name}>
+        <summary>Fill in from a Booking.com confirmation email</summary>
+        <p className="hint">Open the confirmation email, select everything, copy it, and paste it here. It is read on this device only and is not saved.</p>
+        <textarea rows={4} value={mail} placeholder="Paste the email here" onChange={(e) => setMail(e.target.value)} />
+        <button type="button" className="chip" disabled={!mail.trim() || mailBusy} onClick={readMail}>{mailBusy ? 'Looking on the map…' : 'Read the email'}</button>
+        {mailMsg && <ul className="import-msg">{mailMsg.map((m) => <li key={m}>{m}</li>)}</ul>}
+      </details>
       <Field label="Name"><input value={s.name} onChange={(e) => up({ name: e.target.value })} autoFocus={!existing} /></Field>
       <div className="two">
         <Field label="Type"><select value={s.type} onChange={(e) => up({ type: e.target.value as StayType })}>{types.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
@@ -650,8 +711,8 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
           <Field label="Confirmation code"><input value={s.booking?.confirmationCode ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...s.booking, confirmationCode: e.target.value || undefined } })} /></Field>
         </div>
         <Field label="Booked on">
-          <select value={s.booking?.source ?? 'unspecified'} onChange={(e) => up({ booking: { ...s.booking, source: e.target.value as 'airbnb' | 'getyourguide' | 'unspecified' } })}>
-            <option value="unspecified">—</option><option value="airbnb">Airbnb</option><option value="getyourguide">GetYourGuide</option>
+          <select value={s.booking?.source ?? 'unspecified'} onChange={(e) => up({ booking: { ...s.booking, source: e.target.value as 'airbnb' | 'getyourguide' | 'booking' | 'unspecified' } })}>
+            <option value="unspecified">—</option><option value="airbnb">Airbnb</option><option value="booking">Booking.com</option><option value="getyourguide">GetYourGuide</option>
           </select>
         </Field>
       </div>

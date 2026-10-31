@@ -20,7 +20,7 @@ export interface Link {
   url?: string;
 }
 
-export type BookingSource = 'airbnb' | 'getyourguide' | 'unspecified';
+export type BookingSource = 'airbnb' | 'getyourguide' | 'booking' | 'unspecified';
 
 export interface BookingInfo {
   bookedBy?: string; // a first name

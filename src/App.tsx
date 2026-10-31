@@ -821,7 +821,7 @@ function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; sha
         {!shared && e.booking && (
           <p className="meta-line">
             {e.booking.bookedBy ? `Booked by ${e.booking.bookedBy}` : 'Booked'}
-            {e.booking.source !== 'unspecified' ? ` on ${e.booking.source === 'getyourguide' ? 'GetYourGuide' : 'Airbnb'}` : ''}
+            {e.booking.source !== 'unspecified' ? ` on ${e.booking.source === 'getyourguide' ? 'GetYourGuide' : e.booking.source === 'booking' ? 'Booking.com' : 'Airbnb'}` : ''}
           </p>
         )}
       </div>
