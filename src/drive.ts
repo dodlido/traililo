@@ -201,15 +201,87 @@ export function localTaken(created: string | undefined, lon: number | undefined)
 /** The file name a picture gets in Drive: when it was taken, then its own name. The same picture always gets the same name. */
 export const driveName = (pic: { name: string }, taken: string | undefined) => `${taken ? `${taken.replace('T', '_').replace(/:/g, '-')} ` : ''}${pic.name}`.replace(/[\\/]/g, '-');
 
+/** Where a JPEG says it was taken, from its EXIF block, when it has one. */
+export async function gpsOf(blob: Blob): Promise<{ lat: number; lon: number } | undefined> {
+  try {
+    const v = new DataView(await blob.slice(0, 262144).arrayBuffer());
+    if (v.getUint16(0) !== 0xffd8) return undefined;
+    let o = 2;
+    while (o + 4 < v.byteLength) {
+      const marker = v.getUint16(o);
+      const len = v.getUint16(o + 2);
+      if (marker === 0xffe1 && v.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10; // start of the TIFF header
+        const le = v.getUint16(t) === 0x4949;
+        const u16 = (p: number) => v.getUint16(t + p, le);
+        const u32 = (p: number) => v.getUint32(t + p, le);
+        const ifd = (p: number) => {
+          const n = u16(p);
+          const out = new Map<number, number>();
+          for (let i = 0; i < n; i++) out.set(u16(p + 2 + i * 12), p + 2 + i * 12);
+          return out;
+        };
+        const gpsAt = ifd(u32(4)).get(0x8825);
+        if (gpsAt === undefined) return undefined;
+        const g = ifd(u32(gpsAt + 8));
+        const ref = (tag: number) => {
+          const e = g.get(tag);
+          return e === undefined ? '' : String.fromCharCode(v.getUint8(t + e + 8));
+        };
+        const dms = (tag: number) => {
+          const e = g.get(tag);
+          if (e === undefined) return undefined;
+          const p = u32(e + 8);
+          const r = (i: number) => u32(p + i * 8) / Math.max(1, u32(p + i * 8 + 4));
+          return r(0) + r(1) / 60 + r(2) / 3600;
+        };
+        const la = dms(2);
+        const lo = dms(4);
+        if (la === undefined || lo === undefined || (la === 0 && lo === 0)) return undefined;
+        return { lat: ref(1) === 'S' ? -la : la, lon: ref(3) === 'W' ? -lo : lo };
+      }
+      if (marker === 0xffda || len < 2) break;
+      o += 2 + len;
+    }
+  } catch {
+    /* no readable location */
+  }
+  return undefined;
+}
+
+const spots = new Map<string, Promise<{ lat: number; lon: number } | null>>();
+/** The place a saved picture was taken, as Drive read it from the file, or null when the file has none. */
+export function locateInDrive(id: string): Promise<{ lat: number; lon: number } | null> {
+  let s = spots.get(id);
+  if (!s) {
+    s = call(`${DRIVE}/${encodeURIComponent(id)}?fields=imageMediaMetadata(location)`, {}, 'Google Drive')
+      .then((r) => r.json() as Promise<{ imageMediaMetadata?: { location?: { latitude?: number; longitude?: number } } }>)
+      .then((m) => {
+        const l = m.imageMediaMetadata?.location;
+        return l && typeof l.latitude === 'number' && typeof l.longitude === 'number' ? { lat: l.latitude, lon: l.longitude } : null;
+      });
+    s.catch(() => spots.delete(id));
+    spots.set(id, s);
+  }
+  return s;
+}
+
 /** Copies one chosen picture into the trip's folder and returns what the trip keeps about it. */
 export async function saveToDrive(pic: PickedPicture, folder: string, taken: string | undefined): Promise<DrivePhoto> {
-  const bytes = await call(`${pic.baseUrl}=w1600-h1600`, {}, 'Google Photos').then((r) => r.blob());
+  // "-d" asks Google to keep the picture's own details (its place, when it has one); if that is refused, the plain copy is used
+  let bytes: Blob;
+  try {
+    bytes = await (await call(`${pic.baseUrl}=w1600-h1600-d`, {}, 'Google Photos')).blob();
+  } catch {
+    bytes = await (await call(`${pic.baseUrl}=w1600-h1600`, {}, 'Google Photos')).blob();
+  }
+  const spot = await gpsOf(bytes);
   const name = driveName(pic, taken);
   const meta = { name, parents: [folder], mimeType: pic.mime, appProperties: taken ? { taken } : undefined };
   const edge = `tl${Math.random().toString(36).slice(2)}`;
   const body = new Blob([`--${edge}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${edge}\r\nContent-Type: ${pic.mime}\r\n\r\n`, bytes, `\r\n--${edge}--`]);
   const made = (await (await call(`${UPLOAD}?uploadType=multipart&fields=id,name`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${edge}` }, body }, 'Google Drive')).json()) as { id: string; name?: string };
-  return { id: made.id, name: made.name ?? name, ...(taken ? { taken } : {}) };
+  return { id: made.id, name: made.name ?? name, ...(taken ? { taken } : {}), ...(spot ? { lat: Math.round(spot.lat * 1e5) / 1e5, lon: Math.round(spot.lon * 1e5) / 1e5 } : {}) };
 }
 
 // ---------------------------------------------------------------- showing them

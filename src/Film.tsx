@@ -7,7 +7,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { Trip } from './model.ts';
 import { buildFilm, headingAt, kmBetween, labelOfMode, pathUpTo, pointAt, sceneAt, type Film, type LngLat, type Mode, type MoveScene, type Scene, type StopScene } from './film.ts';
 import { CATS, FERRY, PLANE, glyphSvg } from './mapkit.ts';
-import { connectDrive, driveAvailable, driveConnected, pictureSrc } from './drive.ts';
+import { connectDrive, driveAvailable, driveConnected, locateInDrive, pictureSrc } from './drive.ts';
 import { Icon } from './Icon.tsx';
 import { Pic } from './Pic.tsx';
 import { countryName, longDate, monthShort, dayOfMonth, shortDate, weekday } from './derive.ts';
@@ -114,7 +114,8 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
   const [credits, setCredits] = useState(false);
 
   const hasPhotos = useMemo(() => trip.days.some((d) => d.date <= upTo && d.drivePhotos?.length), [trip, upTo]);
-  const film = useMemo(() => buildFilm(trip, upTo, { photos: ready }), [trip, upTo, ready]);
+  const [spots, setSpots] = useState<Map<string, { lat: number; lon: number }> | undefined>();
+  const film = useMemo(() => buildFilm(trip, upTo, { photos: ready, locations: spots }), [trip, upTo, ready, spots]);
 
   const box = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -141,6 +142,36 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
   filmRef.current = film;
   playRef.current = playing;
   speedRef.current = speed;
+
+  // pictures saved without a place: ask Drive whether the file knows where it was taken (once, before the film starts)
+  const startedRef = useRef(false);
+  startedRef.current = started;
+  useEffect(() => {
+    if (!ready) return;
+    const need = trip.days.filter((d) => d.date <= upTo).flatMap((d) => d.drivePhotos ?? []).filter((p) => p.lat === undefined);
+    if (!need.length) return;
+    let live = true;
+    const found = new Map<string, { lat: number; lon: number }>();
+    (async () => {
+      const queue = [...need];
+      const worker = async () => {
+        for (let p = queue.shift(); p; p = queue.shift()) {
+          try {
+            const at = await locateInDrive(p.id);
+            if (at) found.set(p.id, at);
+          } catch {
+            /* this one stays on the time guess */
+          }
+        }
+      };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      // a film that is already playing is not rebuilt under the viewer
+      if (live && found.size && !startedRef.current) setSpots(found);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [ready, trip, upTo]);
 
   // ---------------------------------------------------------------- the map
   useEffect(() => {
@@ -709,6 +740,11 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
                 <Icon name="play" size={34} />
               </button>
               <p className="film-len">{mmss(film.total)} · {film.days.length} {film.days.length === 1 ? 'day' : 'days'}</p>
+              {film.placed.location + film.placed.time > 0 && (
+                <p className="film-len">
+                  {film.placed.location > 0 ? `${film.placed.location} of ${film.placed.location + film.placed.time} pictures placed by where they were taken` : 'Pictures placed by when they were taken (they carry no location)'}
+                </p>
+              )}
               {needSignIn && (
                 <button type="button" className="film-signin" disabled={busy} onClick={() => void connect()}>
                   <Icon name="image" size={17} /> {busy ? 'Connecting…' : 'Add my pictures (sign in with Google)'}

@@ -94,8 +94,9 @@ export interface Film {
   roads: { path: LngLat[]; mode: Mode }[];
   bounds: [LngLat, LngLat] | null;
   totals: Odo;
-  /** Pictures that could not be placed in time and were left out of the film. */
   empty: boolean;
+  /** How the pictures found their scene: by where they were taken, or by when. */
+  placed: { location: number; time: number };
 }
 
 // ------------------------------------------------------------------ geometry
@@ -336,7 +337,63 @@ function assignPhotos(items: Item[], photos: DrivePhoto[]): DrivePhoto[] {
   return left;
 }
 
+/** Distance in km from a spot to the nearest point on a line. */
+function toPath(p: { lat: number; lon: number }, path: LngLat[]): number {
+  const k = Math.cos(p.lat * R);
+  let best = Infinity;
+  for (let i = 0; i < path.length; i++) {
+    const ax = (path[i][0] - p.lon) * k * 111.32;
+    const ay = (path[i][1] - p.lat) * 110.57;
+    const bx = (path[Math.min(i + 1, path.length - 1)][0] - p.lon) * k * 111.32;
+    const by = (path[Math.min(i + 1, path.length - 1)][1] - p.lat) * 110.57;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+
+/**
+ * Pictures that know where they were taken go to the nearest scene that is close enough (a stop, a stretch of road, or the
+ * place of the night). The rest, and any that are not near anything, are left for the time matching.
+ */
+function placeByLocation(items: Item[], night: Point | undefined, photos: DrivePhoto[], where: (p: DrivePhoto) => Point | undefined): { rest: DrivePhoto[]; night: DrivePhoto[]; done: number } {
+  const rest: DrivePhoto[] = [];
+  const atNight: DrivePhoto[] = [];
+  let done = 0;
+  for (const p of photos) {
+    const w = where(p);
+    if (!w) {
+      rest.push(p);
+      continue;
+    }
+    let best: { score: number; to: Item | 'night' } | null = null;
+    const consider = (d: number, limit: number, to: Item | 'night') => {
+      if (d > limit) return;
+      const score = d / limit;
+      if (!best || score < best.score) best = { score, to };
+    };
+    for (const it of items) {
+      if (it.move) consider(toPath(w, it.move.path), 0.4, it);
+      else if (it.stop) consider(kmBetween(w, it.stop.at), it.stop.at.approx ? 6 : it.stop.wide ? 2.5 : 1.2, it);
+    }
+    if (night) consider(kmBetween(w, night), 0.5, 'night');
+    const b = best as { score: number; to: Item | 'night' } | null;
+    if (!b) rest.push(p);
+    else {
+      done++;
+      if (b.to === 'night') atNight.push(p);
+      else b.to.photos.push(p);
+    }
+  }
+  return { rest, night: atNight, done };
+}
+
 export interface FilmOptions {
+  /** Where pictures were taken, found afterwards for pictures that were saved without it. */
+  locations?: Map<string, { lat: number; lon: number }>;
   /** Leave the pictures out (not signed in to Google). */
   photos?: boolean;
   /** Seconds the film should roughly last at most. */
@@ -368,6 +425,8 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
   let curName = '';
   let heading = 24;
   let lastStayId: string | undefined;
+  let placedByLocation = 0;
+  let placedByTime = 0;
 
   days.forEach((day, di) => {
     const stay = day.stayId ? stays.get(day.stayId) : undefined;
@@ -432,7 +491,11 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
 
     const pinnedIds = new Set(day.entries.flatMap((e) => (e.kind === 'journal' ? (e.photoIds ?? []) : [])));
     const photos = withPhotos ? (day.drivePhotos ?? []).filter((p) => !pinnedIds.has(p.id)) : [];
-    const leftover = assignPhotos(items.filter((it) => !it.pinned), photos).sort(byTaken);
+    const live = items.filter((it) => !it.pinned);
+    const byWhere = placeByLocation(live, sp ?? cur, photos, (p) => (p.lat !== undefined && p.lon !== undefined ? { lat: p.lat, lon: p.lon } : opts.locations?.get(p.id)));
+    const leftover = [...byWhere.night, ...assignPhotos(live, byWhere.rest)].sort(byTaken);
+    placedByLocation += byWhere.done;
+    placedByTime += photos.length - byWhere.done;
 
     // ----- the scenes of the day -----
     if (!cur) return;
@@ -548,7 +611,7 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
     marks.push({ date: s.date, n: s.n, region: s.region, start: s.start, end: at });
   }
   const bounds: Film['bounds'] = pts.length ? [[Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))], [Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))]] : null;
-  return { scenes, total: at, days: marks, roads, bounds, totals: run, empty: !scenes.some((s) => s.kind === 'move' || s.kind === 'stop' || s.kind === 'night') };
+  return { scenes, total: at, days: marks, roads, bounds, totals: run, empty: !scenes.some((s) => s.kind === 'move' || s.kind === 'stop' || s.kind === 'night'), placed: { location: placedByLocation, time: placedByTime } };
 }
 
 /** The scene playing at time t (ms). */
