@@ -70,7 +70,7 @@ interface EntryBase {
 export interface CommuteEntry extends EntryBase {
   kind: 'commute';
   legs: Leg[];
-  /** A drive added between two stops of a day. It is drawn on the map as well as the day's journey, not instead of it. */
+  /** Getting there (drive, bus, ferry, flight…) added between two stops of a day. It is drawn on the map as well as the day's journey, not instead of it. */
   between?: boolean;
 }
 
