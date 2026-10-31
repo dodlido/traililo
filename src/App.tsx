@@ -4,9 +4,10 @@ import { deletePhoto, photoUrlOf, uploadPhoto } from './backend.ts';
 import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
 import { OpenTrail } from './OpenTrail.tsx';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
 import { RecapView } from './Recap.tsx';
+import { DriveGap } from './DriveGap.tsx';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { exportTrip } from './exportTrip.ts';
@@ -669,7 +670,10 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
       <div className="day-body">
         <DayWeather trip={trip} day={day} />
         {day.entries.map((e, i) => (
-          <EntryView key={e.id} entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
+          <Fragment key={e.id}>
+            <EntryView entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
+            {canEdit && <DriveGap day={day} index={i} stay={stay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
+          </Fragment>
         ))}
         {dayLines.map((l) => (
           <LineRow key={l.id} line={l} hidden={l.mode === 'trek' && !l.stops && day.entries.some((e) => e.kind === 'hike' && !!tracks[e.id])} canEdit={canEdit} onEdit={() => openSheet({ type: 'line', date: day.date, id: l.id })} />

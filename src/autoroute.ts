@@ -25,8 +25,9 @@ export function roadJobs(trip: Trip): Job[] {
       if (e.kind !== 'commute') continue;
       e.legs.forEach((l, k) => {
         if (!ROUTED.includes(l.mode) || l.path || l.pathTried) return;
-        const from = l.fromPoint ?? (e.legs.length === 1 ? trip.days[i - 1]?.point : undefined);
-        const to = l.toPoint ?? (e.legs.length === 1 ? d.point : undefined);
+        const own = !e.between && e.legs.length === 1;
+        const from = l.fromPoint ?? (own ? trip.days[i - 1]?.point : undefined);
+        const to = l.toPoint ?? (own ? d.point : undefined);
         if (!from || !to || (from.lat === to.lat && from.lon === to.lon)) return;
         out.push({ date: d.date, entry: e.id, leg: k, mode: l.mode, from, to, label: `${d.date.slice(5)}: ${l.from ?? ''} to ${l.to ?? ''}`.replace(/ to $/, '') });
       });

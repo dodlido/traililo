@@ -70,8 +70,13 @@ function segmentsOf(trip: Trip, tracks: Tracks): Seg[] {
     const trailed = d.entries.some((e) => e.kind === 'hike' && tracks[e.id]);
     const mine = (trip.lines ?? []).filter((l) => l.date === d.date);
     for (const l of mine) if (!(trailed && l.mode === 'trek' && !l.stops)) segs.push({ pts: l.points, mode: l.mode, day: i, name: l.name });
+    // a drive added between two stops of the day is drawn as itself and never takes the day's journey off the map
+    for (const e of d.entries) {
+      if (e.kind !== 'commute' || !e.between) continue;
+      for (const l of e.legs) if (l.fromPoint && l.toPoint) segs.push({ pts: l.path ? l.path.map(([lon, lat]) => ({ lon, lat })) : [l.fromPoint, l.toPoint], mode: 'drive', day: i });
+    }
     if (mine.some((l) => l.replace)) return;
-    const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute');
+    const commute = d.entries.find((e): e is CommuteEntry => e.kind === 'commute' && !e.between);
     const legs = commute?.legs ?? [];
     // legs with a start and end of their own (and a road, for drives) are drawn as they are
     if (legs.length > 0 && (legs.every((l) => l.fromPoint && l.toPoint) || legs.some((l) => l.path))) {
