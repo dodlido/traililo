@@ -11,6 +11,7 @@ export function publicVersion(full: Trip): Trip {
     d.todos = [];
     // journal pages stay private unless you chose to show friends
     if (d.journal && !d.journal.shared) delete d.journal;
+    delete d.drivePhotos; // pictures are in the owner's Drive; friends never get the ids
     for (const e of d.entries) {
       delete e.booking;
       delete e.privateNotes;

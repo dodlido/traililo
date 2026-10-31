@@ -158,6 +158,18 @@ export interface Day {
   todos: Todo[];
   /** Your own words and pictures from the day, written during or after the trip. */
   journal?: Journal;
+  /** Pictures from the day that stay in the owner's Google Drive. Only the file id is kept here, never the picture. */
+  drivePhotos?: DrivePhoto[];
+}
+
+export interface DrivePhoto {
+  /** The Drive file id. */
+  id: string;
+  name: string;
+  /** When it was taken, as the camera recorded it: "2027-03-16T14:22:10". */
+  taken?: string;
+  lat?: number;
+  lon?: number;
 }
 
 export interface Journal {
