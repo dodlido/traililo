@@ -101,7 +101,7 @@ export interface NoteEntry extends EntryBase {
 
 export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry;
 
-export type StayType = 'hotel' | 'airbnb' | 'lodge' | 'refugio' | 'camp' | 'glamping' | 'other';
+export type StayType = 'hotel' | 'airbnb' | 'camp' | 'glamping' | 'other';
 
 export interface Stay {
   id: string;

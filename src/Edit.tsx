@@ -679,7 +679,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
       t.stays = t.stays.filter((q) => q.id !== id);
       for (const dd of t.days) if (dd.stayId === id) delete dd.stayId;
     });
-  const types: StayType[] = ['hotel', 'airbnb', 'lodge', 'refugio', 'camp', 'glamping', 'other'];
+  const types: StayType[] = ['hotel', 'airbnb', 'camp', 'glamping', 'other'];
   return (
     <Sheet title={existing ? 'Edit place to sleep' : 'New place to sleep'} onClose={onClose}>
       <details className="import-mail" open={!existing && !s.name}>
