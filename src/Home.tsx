@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createTrip, deleteTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
+import { HomeSetting } from './Edit.tsx';
 import { THEMES, Scene, themeFor } from './scenes.tsx';
 import { shortDate } from './derive.ts';
 
@@ -30,6 +31,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
       {error && <p className="auth-error">{error}</p>}
       {trips && trips.length === 0 && <p className="auth-note">No trips yet. Trips you’re invited to will show up here.</p>}
       <NewTrip />
+      <HomeSetting />
       <ul className="trip-list">
         {trips?.map((t) => (
           <TripCard key={t.id} t={t} session={session} onDeleted={() => setTrips((l) => (l ? l.filter((x) => x.id !== t.id) : l))} />

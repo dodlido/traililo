@@ -47,6 +47,9 @@ export interface Leg {
   path?: [number, number][];
   /** A ferry line was looked for and none was found, so it stays a straight line. */
   pathTried?: boolean;
+  /** The start or the end is the owner's home. Friends' copies get no position or road for such a leg. */
+  fromHome?: boolean;
+  toHome?: boolean;
 }
 
 interface EntryBase {
@@ -117,7 +120,7 @@ export interface MealEntry extends EntryBase {
 
 export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry | MealEntry;
 
-export type StayType = 'hotel' | 'airbnb' | 'camp' | 'glamping' | 'other';
+export type StayType = 'hotel' | 'airbnb' | 'camp' | 'glamping' | 'home' | 'other';
 
 export interface Stay {
   id: string;

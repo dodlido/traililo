@@ -9,6 +9,7 @@ import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
 import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
+import { saveHome, useHome } from './home.ts';
 import { legTimes, minutes, timeSpan } from './derive.ts';
 
 /** A spot picked on the map, to start something from. */
@@ -736,6 +737,35 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
 
 // ---------------------------------------------------------------- stays
 
+/** The account's home: set once, used by every trip that has a "Home" place to sleep. */
+export function HomeSetting() {
+  const home = useHome();
+  const [open, setOpen] = useState(false);
+  const [msg, setMsg] = useState('');
+  const set = async (h: { name: string; point: Point } | null) => {
+    setMsg((await saveHome(h)) ?? '');
+    setOpen(false);
+  };
+  return (
+    <div className="home-setting">
+      <p>
+        <Icon name="home" size={18} /> {home ? <>Home is <b>{home.name}</b></> : 'Home is not set yet'}
+        <button type="button" className="chip" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          {home ? 'Change' : 'Set home'}
+        </button>
+        {home && !open && (
+          <button type="button" className="chip" onClick={() => void set(null)}>
+            Clear
+          </button>
+        )}
+      </p>
+      {open && <PlaceSearch always current={home?.point} onPick={(name, p) => void set({ name: name.split(',')[0].trim() || 'Home', point: p })} onClear={() => void set(null)} />}
+      <p className="hint">Saved to your account, not to any trip, so it is the same everywhere and friends never get it.</p>
+      {msg && <p role="status" className="hint">{msg}</p>}
+    </div>
+  );
+}
+
 export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: Trip; mutate: Mutate; id?: string; date?: string; start?: Start; onClose: () => void }) {
   const existing = id ? trip.stays.find((s) => s.id === id) : undefined;
   const base = useMemo<Stay>(
@@ -802,10 +832,11 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
     }
   };
   const save = () => {
-    if (!s.name.trim()) return setErr('Give the place a name.');
+    if (!isHome && !s.name.trim()) return setErr('Give the place a name.');
     setErr(null);
     const nights = Math.max(1, Math.round(s.nights || 1));
-    const out: Stay = { ...s, name: s.name.trim(), nights, checkOut: addDays(s.checkIn, nights), notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined };
+    // home is only ever "Home": where it is comes from the account, so no position, address or booking is kept with the trip
+    const out: Stay = { ...s, name: isHome ? 'Home' : s.name.trim(), ...(isHome ? { point: undefined, location: undefined, booking: undefined, assumed: undefined } : {}), nights, checkOut: addDays(s.checkIn, nights), notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined };
     run((t) => {
       t.stays = existing ? t.stays.map((q) => (q.id === out.id ? out : q)) : [...t.stays, out];
       for (const dd of t.days) if (dd.stayId === out.id) delete dd.stayId;
@@ -823,9 +854,11 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
       t.stays = t.stays.filter((q) => q.id !== id);
       for (const dd of t.days) if (dd.stayId === id) delete dd.stayId;
     });
-  const types: StayType[] = ['hotel', 'airbnb', 'camp', 'glamping', 'other'];
+  const types: StayType[] = ['hotel', 'airbnb', 'camp', 'glamping', 'home', 'other'];
+  const isHome = s.type === 'home';
   return (
     <Sheet title={existing ? 'Edit place to sleep' : 'New place to sleep'} onClose={onClose}>
+      {!isHome && (
       <details className="import-mail" open={!existing && !s.name}>
         <summary>Fill in from a Booking.com or Airbnb confirmation email</summary>
         <p className="hint">Open the confirmation email, select everything, copy it, and paste it here. It is read on this device only and is not saved.</p>
@@ -833,9 +866,10 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
         <button type="button" className="chip" disabled={!mail.trim() || mailBusy} onClick={readMail}>{mailBusy ? 'Looking on the map…' : 'Read the email'}</button>
         {mailMsg && <ul className="import-msg">{mailMsg.map((m) => <li key={m}>{m}</li>)}</ul>}
       </details>
-      <Field label="Name"><input value={s.name} onChange={(e) => up({ name: e.target.value })} autoFocus={!existing} /></Field>
+      )}
+      {!isHome && <Field label="Name"><input value={s.name} onChange={(e) => up({ name: e.target.value })} autoFocus={!existing} /></Field>}
       <div className="two">
-        <Field label="Type"><select value={s.type} onChange={(e) => up({ type: e.target.value as StayType })}>{types.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
+        <Field label="Type"><select value={s.type} onChange={(e) => up({ type: e.target.value as StayType, ...(e.target.value === 'home' ? { name: 'Home' } : s.type === 'home' && s.name === 'Home' ? { name: '' } : {}) })}>{types.map((t) => <option key={t} value={t}>{t}</option>)}</select></Field>
         <Field label="Nights"><input type="number" min={1} inputMode="numeric" value={s.nights} onChange={(e) => up({ nights: +e.target.value })} /></Field>
       </div>
       <Field label="First night">
@@ -843,9 +877,10 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
           {trip.days.map((dd) => <option key={dd.date} value={dd.date}>{dd.date} · {dd.region}</option>)}
         </select>
       </Field>
-      <Field label="Town or area (optional)"><input value={s.location ?? ''} onChange={(e) => up({ location: e.target.value || undefined })} /></Field>
-      <label className="check"><input type="checkbox" checked={!!s.assumed} onChange={(e) => up({ assumed: e.target.checked || undefined })} /> Not booked yet</label>
-      <div className="booking-edit">
+      {isHome && <HomeSetting />}
+      {!isHome && <Field label="Town or area (optional)"><input value={s.location ?? ''} onChange={(e) => up({ location: e.target.value || undefined })} /></Field>}
+      {!isHome && <label className="check"><input type="checkbox" checked={!!s.assumed} onChange={(e) => up({ assumed: e.target.checked || undefined })} /> Not booked yet</label>}
+      {!isHome && <div className="booking-edit">
         <h3>Booking <small>(only you see this)</small></h3>
         <div className="two">
           <Field label="Booked by"><input value={s.booking?.bookedBy ?? ''} onChange={(e) => up({ booking: { source: 'unspecified', ...s.booking, bookedBy: e.target.value || undefined } })} /></Field>
@@ -856,10 +891,10 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
             <option value="unspecified">—</option><option value="airbnb">Airbnb</option><option value="booking">Booking.com</option><option value="getyourguide">GetYourGuide</option>
           </select>
         </Field>
-      </div>
+      </div>}
       <Field label="Notes" hint="One per line. Friends see these."><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
-      <Field label="Private (address, phone, door code)" hint="Only you see these."><textarea rows={3} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>
-      <Field label="Where on the map"><PlaceSearch always current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>
+      {!isHome && <Field label="Private (address, phone, door code)" hint="Only you see these."><textarea rows={3} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>}
+      {!isHome && <Field label="Where on the map"><PlaceSearch always current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>}
       <Actions onSave={save} busy={busy} error={err ?? error} onDelete={existing ? remove : undefined} />
     </Sheet>
   );

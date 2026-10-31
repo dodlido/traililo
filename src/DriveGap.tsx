@@ -65,7 +65,7 @@ export function DriveGap({ day, index, stay, tracks, mutate, openSheet }: { day:
     setBusy(mode);
     setNote('');
     const id = `${day.date}-d${Math.random().toString(36).slice(2, 7)}`;
-    const leg: Leg = { mode, from: short(from.name), to: short(to.name), ...(from.point ? { fromPoint: from.point } : {}), ...(to.point ? { toPoint: to.point } : {}) };
+    const leg: Leg = { mode, from: short(from.name), to: short(to.name), ...(from.point ? { fromPoint: from.point } : {}), ...(to.point ? { toPoint: to.point } : {}), ...(!next && stay?.type === 'home' ? { toHome: true } : {}) };
     if (from.point && to.point) {
       const km = Math.round(flat(from.point, to.point) * 10) / 10;
       try {

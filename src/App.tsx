@@ -8,6 +8,7 @@ import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useSta
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
 import { RecapView } from './Recap.tsx';
 import { DriveGap } from './DriveGap.tsx';
+import { stripHome, useHome, withHome } from './home.ts';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { exportTrip } from './exportTrip.ts';
@@ -73,8 +74,11 @@ const useDesktop = () => {
 };
 
 export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; sub: string }) {
-  const [trip, setTrip] = useState(bundle.trip);
-  const tripRef = useRef(trip);
+  const [rawTrip, setTrip] = useState(bundle.trip);
+  // the owner sees "Home" where the account says home is; what is saved never carries that position
+  const home = useHome();
+  const trip = useMemo(() => (bundle.owner ? withHome(rawTrip, home) : rawTrip), [rawTrip, home]);
+  const tripRef = useRef(rawTrip);
   const versionRef = useRef(bundle.version);
   const [tracks, setTracks] = useState(bundle.tracks);
   const tracksRef = useRef(tracks);
@@ -98,6 +102,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       const before = tripRef.current;
       const next = structuredClone(before);
       fn(next);
+      stripHome(next);
       next.totals = computeTotals(next);
       tripRef.current = next;
       setTrip(next);
@@ -611,6 +616,11 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
                     <Icon name="tent" size={15} /> Camp
                   </span>
                 )}
+                {s.type === 'home' && (
+                  <span className="camp-tag">
+                    <Icon name="home" size={15} /> Home
+                  </span>
+                )}
                 <h2>{s.name}</h2>
                 <p>
                   {region} · {shortDate(s.checkIn)} to {shortDate(s.checkOut)}
@@ -740,7 +750,7 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   const night = nightOf(stay, date);
   return (
     <p className="stay">
-      <Icon name={isCamp(stay) ? 'tent' : 'bed'} size={18} />
+      <Icon name={isCamp(stay) ? 'tent' : stay.type === 'home' ? 'home' : 'bed'} size={18} />
       <span className="stay-name">{stay.name}</span>
       {stay.assumed && <span className="tag">to be booked</span>}
       {night && <span className="meta">{night}</span>}
