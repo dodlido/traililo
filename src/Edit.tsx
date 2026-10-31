@@ -2,7 +2,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { searchPlace, type Found } from './geocode.ts';
-import { MapPick, PlanCtx, RouteMini, planAnchor, planPlaces } from './Pick.tsx';
+import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
@@ -10,13 +10,16 @@ import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
 import { minutes } from './derive.ts';
 
+/** A spot picked on the map, to start something from. */
+export interface Start { name: string; point: Point }
+
 export type SheetState =
-  | { type: 'add'; date: string }
-  | { type: 'entry'; date: string; id?: string; kind?: Entry['kind'] }
-  | { type: 'stay'; id?: string; date?: string }
+  | { type: 'add'; date: string; start?: Start }
+  | { type: 'entry'; date: string; id?: string; kind?: Entry['kind']; start?: Start }
+  | { type: 'stay'; id?: string; date?: string; start?: Start }
   | { type: 'day'; date: string }
   | { type: 'journal'; date: string }
-  | { type: 'line'; date: string; id?: string }
+  | { type: 'line'; date: string; id?: string; start?: Start }
   | { type: 'settings' };
 
 type Mutate = (fn: (t: Trip) => void) => Promise<void>;
@@ -96,6 +99,7 @@ export function useSave(mutate: Mutate, onClose: () => void) {
 export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }: { onPick: (name: string, p: Point) => void; current?: Point; onClear: () => void; near?: Point; keepOpen?: boolean; always?: boolean }) {
   const ctx = useContext(PlanCtx);
   const plan = useMemo(() => (ctx ? planPlaces(ctx.trip, ctx.tracks) : undefined), [ctx]);
+  const lines = useMemo(() => (ctx ? planLines(ctx.trip, ctx.tracks) : undefined), [ctx]);
   const anchor = ctx ? planAnchor(ctx.trip, ctx.date) : undefined;
   const [seen, setSeen] = useState(false);
   const [q, setQ] = useState('');
@@ -138,6 +142,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
           current={current}
           anchor={anchor}
           plan={plan}
+          lines={lines}
           results={res ?? undefined}
           onPick={(n, p) => {
             onPick(n, p);
@@ -178,7 +183,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
 
 // ---------------------------------------------------------------- add menu
 
-export function AddMenu({ date, open, onClose }: { date: string; open: (s: SheetState) => void; onClose: () => void }) {
+export function AddMenu({ date, start, open, onClose }: { date: string; start?: Start; open: (s: SheetState) => void; onClose: () => void }) {
   const items: { kind: Entry['kind']; label: string; icon: string }[] = [
     { kind: 'hike', label: 'Hike', icon: 'hike' },
     { kind: 'experience', label: 'Activity', icon: 'spark' },
@@ -186,19 +191,20 @@ export function AddMenu({ date, open, onClose }: { date: string; open: (s: Sheet
     { kind: 'note', label: 'Note', icon: 'note' },
   ];
   return (
-    <Sheet title="Add to this day" onClose={onClose}>
+    <Sheet title={start ? 'Add here' : 'Add to this day'} onClose={onClose}>
+      {start && <p className="small start-note">Starting at <b>{start.name}</b></p>}
       <div className="add-grid">
         {items.map((i) => (
-          <button key={i.kind} type="button" onClick={() => open({ type: 'entry', date, kind: i.kind })}>
+          <button key={i.kind} type="button" onClick={() => open({ type: 'entry', date, kind: i.kind, start })}>
             <Icon name={i.icon} size={26} />
             <span>{i.label}</span>
           </button>
         ))}
-        <button type="button" onClick={() => open({ type: 'line', date })}>
+        <button type="button" onClick={() => open({ type: 'line', date, start })}>
           <Icon name="map" size={26} />
           <span>Route on map</span>
         </button>
-        <button type="button" onClick={() => open({ type: 'stay', date })}>
+        <button type="button" onClick={() => open({ type: 'stay', date, start })}>
           <Icon name="bed" size={26} />
           <span>Place to sleep</span>
         </button>
@@ -231,13 +237,13 @@ const goodUrl = (u: string, host: RegExp) => {
 };
 const flat = (a: Point, b: Point) => Math.hypot((b.lon - a.lon) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180), (b.lat - a.lat) * 110.57);
 
-export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }: { trip: Trip; mutate: Mutate; setTrack: SetTrack; date: string; id?: string; kind?: Entry['kind']; onClose: () => void }) {
+export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onClose }: { trip: Trip; mutate: Mutate; setTrack: SetTrack; date: string; id?: string; kind?: Entry['kind']; start?: Start; onClose: () => void }) {
   const existing = useMemo(() => (id ? trip.days.find((d) => d.date === date)?.entries.find((e) => e.id === id) : undefined), [trip, date, id]);
   const base: Entry = useMemo(
     () =>
       existing
         ? structuredClone(existing)
-        : ({ id: `${date}-n${rid()}`, kind: kind ?? 'note', title: '', notes: [], warnings: [], links: [], ...(kind === 'commute' ? { legs: [{ mode: 'drive' }] } : {}) } as Entry),
+        : ({ id: `${date}-n${rid()}`, kind: kind ?? 'note', title: '', notes: [], warnings: [], links: [], ...(kind === 'commute' ? { legs: [{ mode: 'drive', ...(start ? { from: start.name, fromPoint: start.point } : {}) }] } : start ? { at: start.point } : {}) } as Entry),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -250,12 +256,12 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
   const [err, setErr] = useState<string | null>(null);
   const { busy, error, run } = useSave(mutate, onClose);
   const [own, setOwn] = useState(false);
-  const [hmode, setHmode] = useState<'link' | 'manual'>('link');
+  const [hmode, setHmode] = useState<'link' | 'manual'>(start && !existing && kind === 'hike' ? 'manual' : 'link');
   const [gpx, setGpx] = useState<ParsedTrack | null>(null);
   const [gpxErr, setGpxErr] = useState('');
   const [alltrails, setAlltrails] = useState('');
   const [gyg, setGyg] = useState('');
-  const [wps, setWps] = useState<{ name: string; point: Point }[]>((base as HikeEntry).waypoints ?? []);
+  const [wps, setWps] = useState<{ name: string; point: Point }[]>((base as HikeEntry).waypoints ?? (start && !existing && kind === 'hike' ? [{ name: start.name.split(',')[0].trim(), point: start.point }] : []));
   const [routing, setRouting] = useState<number | null>(null);
   const [roadErr, setRoadErr] = useState('');
   const up = (patch: Record<string, unknown>) => setD((p) => ({ ...p, ...patch }) as Entry);
@@ -584,13 +590,13 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, onClose }:
 
 // ---------------------------------------------------------------- stays
 
-export function StayEditor({ trip, mutate, id, date, onClose }: { trip: Trip; mutate: Mutate; id?: string; date?: string; onClose: () => void }) {
+export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: Trip; mutate: Mutate; id?: string; date?: string; start?: Start; onClose: () => void }) {
   const existing = id ? trip.stays.find((s) => s.id === id) : undefined;
   const base = useMemo<Stay>(
     () =>
       existing
         ? structuredClone(existing)
-        : { id: `stay-${rid()}`, name: '', type: 'hotel', checkIn: date ?? trip.startDate, checkOut: addDays(date ?? trip.startDate, 1), nights: 1, notes: [], privateNotes: [] },
+        : { id: `stay-${rid()}`, name: '', type: 'hotel', checkIn: date ?? trip.startDate, checkOut: addDays(date ?? trip.startDate, 1), nights: 1, notes: [], privateNotes: [], ...(start ? { point: start.point, location: start.name.split(',')[0].trim() } : {}) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );

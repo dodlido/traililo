@@ -43,6 +43,31 @@ export function planPlaces(trip: Trip, tracks?: Record<string, { lines: number[]
   return out;
 }
 
+export interface PlanLine { coords: number[][]; color: string; dash: boolean }
+
+/** Every trail and drive in the plan, as lines. */
+export function planLines(trip: Trip, tracks?: Record<string, { lines: number[][][] }>): PlanLine[] {
+  const out: PlanLine[] = [];
+  const hikeIds = new Set<string>();
+  for (const d of trip.days) {
+    for (const e of d.entries) {
+      if (e.kind === 'hike') hikeIds.add(e.id);
+      if (e.kind === 'commute') {
+        for (const l of e.legs ?? []) {
+          const coords = l.path?.length ? l.path : l.fromPoint && l.toPoint ? [[l.fromPoint.lon, l.fromPoint.lat], [l.toPoint.lon, l.toPoint.lat]] : null;
+          if (coords) out.push({ coords, color: LINE_COLOR[l.mode] ?? '#b3261e', dash: l.mode === 'flight' || l.mode === 'ferry' });
+        }
+      }
+    }
+  }
+  for (const id of hikeIds) for (const ln of tracks?.[id]?.lines ?? []) if (ln.length > 1) out.push({ coords: ln, color: '#3f7a2c', dash: false });
+  const lc: Record<string, string> = { drive: '#b3261e', ferry: '#1f5f8b', trek: '#3f7a2c', scenic: '#7a2e8a' };
+  for (const l of trip.lines ?? []) if (l.points.length > 1) out.push({ coords: l.points.map((q) => [q.lon, q.lat]), color: lc[l.mode] ?? '#b3261e', dash: l.mode === 'ferry' || l.mode === 'trek' });
+  return out;
+}
+
+const LINE_COLOR: Record<string, string> = { drive: '#b3261e', bus: '#b3261e', taxi: '#b3261e', ferry: '#1f5f8b', flight: '#7a2e8a' };
+
 /** Where a map for this day should open when nothing has been chosen yet. */
 export function planAnchor(trip: Trip, date?: string): Point | undefined {
   const d = date ? trip.days.find((x) => x.date === date) : undefined;
@@ -51,13 +76,17 @@ export function planAnchor(trip: Trip, date?: string): Point | undefined {
 
 const KIND_LABEL: Record<PlanKind, string> = { stay: 'Sleep', hike: 'Hike', activity: 'Activity', travel: 'Travel', spot: 'Spot', town: 'Town' };
 
-export function MapPick({ near, current, onPick, plan, results, pickable = true, anchor }: { near?: Point; current?: Point; onPick: (name: string, p: Point) => void; plan?: PlanPlace[]; results?: { name: string; point: Point }[]; pickable?: boolean; anchor?: Point }) {
+export function MapPick({ near, current, onPick, plan, results, pickable = true, anchor, lines }: { near?: Point; current?: Point; onPick: (name: string, p: Point) => void; plan?: PlanPlace[]; results?: { name: string; point: Point }[]; pickable?: boolean; anchor?: Point; lines?: PlanLine[] }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const mark = useRef<maplibregl.Marker | null>(null);
   const planMarks = useRef<maplibregl.Marker[]>([]);
   const resMarks = useRef<maplibregl.Marker[]>([]);
   const fitted = useRef(false);
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+  const lineData = (l?: PlanLine[]) => ({ type: 'FeatureCollection' as const, features: (l ?? []).map((x) => ({ type: 'Feature' as const, properties: { color: x.color, dash: x.dash ? 1 : 0 }, geometry: { type: 'LineString' as const, coordinates: x.coords } })) });
+  const linesReady = useRef(false);
   const cb = useRef(onPick);
   cb.current = onPick;
   const can = useRef(pickable);
@@ -78,10 +107,17 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
       cb.current(await nameSpot(p), p);
     });
     if (current) setMark(m, current);
+    m.on('load', () => {
+      m.addSource('plan-lines', { type: 'geojson', data: lineData(linesRef.current) });
+      m.addLayer({ id: 'plan-lines-halo', type: 'line', source: 'plan-lines', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#f3e3b8', 'line-width': 4.5, 'line-opacity': 0.7 } });
+      m.addLayer({ id: 'plan-lines-line', type: 'line', source: 'plan-lines', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': ['case', ['==', ['get', 'dash'], 1], ['literal', [2, 1.6]], ['literal', [1, 0]]] } });
+      linesReady.current = true;
+    });
     map.current = m;
     return () => {
       m.remove();
       map.current = null;
+      linesReady.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -94,6 +130,15 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
     if (current) m.easeTo({ center: [current.lon, current.lat], zoom: Math.max(m.getZoom(), 9), duration: 400 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curKey]);
+  const linesKey = JSON.stringify((lines ?? []).map((x) => [x.coords.length, x.coords[0], x.color]));
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const put = () => (m.getSource('plan-lines') as maplibregl.GeoJSONSource | undefined)?.setData(lineData(lines));
+    if (linesReady.current) put();
+    else m.once('load', put);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linesKey]);
   // The plan, drawn as small labelled dots.
   const planKey = JSON.stringify((plan ?? []).map((x) => [x.kind, x.point.lat, x.point.lon]));
   useEffect(() => {
@@ -164,7 +209,7 @@ export function MapPick({ near, current, onPick, plan, results, pickable = true,
           {kinds.map((k) => <span key={k}><i className={`plan-dot-key ${k}`} />{KIND_LABEL[k]}</span>)}
         </p>
       )}
-      <p className="small">{pickable ? 'Tap the map (or a dot) to pin a spot. Pinch or use + and − to move closer.' : 'Your plan around here. Tap it to pin a spot.'}</p>
+      <p className="small">{pickable ? 'Tap the map (or a dot) to pin a spot. Pinch or use + and − to move closer.' : 'Your plan around here. Press Map to pin a spot by tapping.'}</p>
     </div>
   );
 }
