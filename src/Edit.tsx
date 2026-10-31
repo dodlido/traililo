@@ -898,26 +898,49 @@ export function DayEditor({ trip, mutate, date, onClose }: { trip: Trip; mutate:
   );
 }
 
-/** Adds days to the end or the start of the trip, in the same region and, if wanted, the same place to sleep. */
+/** Adds days to the start or end of the trip, or in the middle (everything after moves later). They get the same region and, if wanted, the same place to sleep. */
 export function AddDayEditor({ trip, mutate, onClose }: { trip: Trip; mutate: Mutate; onClose: () => void }) {
-  const [side, setSide] = useState<'end' | 'start'>('end');
+  const [side, setSide] = useState<'end' | 'start' | 'middle'>('end');
   const [count, setCount] = useState(1);
   const first = trip.days[0];
   const lastDay = trip.days[trip.days.length - 1];
-  const edge = side === 'end' ? lastDay : first;
+  const [afterDate, setAfterDate] = useState(trip.days[Math.max(0, trip.days.length - 2)].date);
+  // D is the day the new ones follow; at the start they come before the first day instead
+  const D = side === 'end' ? lastDay.date : afterDate;
+  const edge = side === 'start' ? first : trip.days.find((dd) => dd.date === D) ?? lastDay;
   const [region, setRegion] = useState<string | null>(null);
-  // the stay that carries on into the new days: one that ends the morning of the last day (a night is added for that day too) or after it
-  const stretch = side === 'end' ? trip.stays.find((q) => q.checkOut === addDays(lastDay.date, 1)) ?? trip.stays.find((q) => q.checkOut === lastDay.date) : trip.stays.find((q) => q.checkIn === first.date);
-  const gap = side === 'end' && stretch && stretch.checkOut === lastDay.date ? 1 : 0;
-  const [keep, setKeep] = useState(true);
   const n = Math.min(14, Math.max(1, Math.round(count) || 1));
-  const dates = Array.from({ length: n }, (_, i) => (side === 'end' ? addDays(lastDay.date, i + 1) : addDays(first.date, i - n)));
+  // the stay that carries on into the new days
+  const stretch =
+    side === 'start'
+      ? trip.stays.find((q) => q.checkIn === first.date)
+      : side === 'end'
+        ? trip.stays.find((q) => q.checkOut === addDays(lastDay.date, 1)) ?? trip.stays.find((q) => q.checkOut === lastDay.date)
+        : trip.stays.find((q) => q.checkIn <= D && q.checkOut > D);
+  // the last day of a trip is the checkout morning: it becomes a night and the new last day is the checkout
+  const gap = side === 'end' && stretch && stretch.checkOut === lastDay.date ? 1 : 0;
+  // inside a stay that goes on past the next day there is no choice: it has to stretch
+  const forced = side === 'middle' && !!stretch && stretch.checkOut > addDays(D, 1);
+  const [keepAsked, setKeep] = useState(true);
+  const keep = forced || keepAsked;
+  const dates = Array.from({ length: n }, (_, i) => (side === 'start' ? addDays(first.date, i - n) : addDays(D, i + 1)));
   const nice = (iso: string) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   const { busy, error, run } = useSave(mutate, onClose);
   const where = (region ?? edge.region).trim() || edge.region;
+  const later = side === 'middle' ? trip.days.filter((dd) => dd.date > D).length : 0;
   const save = () =>
     run((t) => {
-      const e = side === 'end' ? t.days[t.days.length - 1] : t.days[0];
+      const e = t.days.find((dd) => dd.date === edge.date)!;
+      const shift = (iso: string) => (side === 'middle' && iso > D ? addDays(iso, n) : iso);
+      if (side === 'middle') {
+        for (const dd of t.days) dd.date = shift(dd.date);
+        for (const q of t.stays) {
+          if (stretch && q.id === stretch.id) continue;
+          if (q.checkIn > D) { q.checkIn = shift(q.checkIn); q.checkOut = shift(q.checkOut); }
+        }
+        for (const po of t.pois ?? []) if (po.date) po.date = shift(po.date);
+        for (const l of t.lines ?? []) l.date = shift(l.date);
+      }
       for (const date of dates) t.days.push({ date, region: where, ...(e.country ? { country: e.country } : {}), ...(e.point ? { point: e.point } : {}), ...(stretch && keep && !(gap && date === dates[dates.length - 1]) ? { stayId: stretch.id } : {}), entries: [], todos: [] });
       t.days.sort((a, b) => a.date.localeCompare(b.date));
       t.startDate = t.days[0].date;
@@ -925,29 +948,42 @@ export function AddDayEditor({ trip, mutate, onClose }: { trip: Trip; mutate: Mu
       const st = stretch && keep ? t.stays.find((q) => q.id === stretch.id) : undefined;
       if (st) {
         st.nights += n;
-        if (side === 'end') {
-          st.checkOut = addDays(st.checkOut, n);
-          // the old last day was the checkout morning; it is now a night here, and the new last day is the checkout
-          const old = t.days.find((dd) => dd.date === lastDay.date);
-          if (gap && old && !old.stayId) old.stayId = st.id;
-        } else st.checkIn = addDays(st.checkIn, -n);
+        if (side === 'start') st.checkIn = addDays(st.checkIn, -n);
+        else st.checkOut = addDays(st.checkOut, n);
+        // the old last day was the checkout morning; it is now a night here, and the new last day is the checkout
+        const old = t.days.find((dd) => dd.date === lastDay.date);
+        if (gap && old && !old.stayId) old.stayId = st.id;
+      } else if (stretch && side === 'middle') {
+        // not kept: its other nights, if any, move with the days after
+        if (stretch.checkOut > addDays(D, 1)) stretch.checkOut = shift(stretch.checkOut);
       }
     });
+  const setSideTo = (v: 'end' | 'start' | 'middle') => { setSide(v); setRegion(null); };
   return (
     <Sheet title="Add days" onClose={onClose}>
       <div className="seg-switch" role="radiogroup" aria-label="Where to add the days">
-        <button type="button" role="radio" aria-checked={side === 'end'} className={side === 'end' ? 'chip is-on' : 'chip'} onClick={() => setSide('end')}>At the end</button>
-        <button type="button" role="radio" aria-checked={side === 'start'} className={side === 'start' ? 'chip is-on' : 'chip'} onClick={() => setSide('start')}>At the start</button>
+        {([['start', 'At the start'], ['middle', 'In the middle'], ['end', 'At the end']] as const).map(([k, label]) => (
+          <button key={k} type="button" role="radio" aria-checked={side === k} className={side === k ? 'chip is-on' : 'chip'} onClick={() => setSideTo(k)}>{label}</button>
+        ))}
       </div>
+      {side === 'middle' && (
+        <Field label="After which day">
+          <select value={afterDate} onChange={(e) => { setAfterDate(e.target.value); setRegion(null); }}>
+            {trip.days.slice(0, -1).map((dd) => <option key={dd.date} value={dd.date}>{nice(dd.date)} · {dd.region}</option>)}
+          </select>
+        </Field>
+      )}
       <Field label="How many days"><input type="number" min={1} max={14} inputMode="numeric" value={count} onChange={(e) => setCount(+e.target.value)} /></Field>
       <Field label="Where" hint="The region they belong to. Pick an existing one so they sit with it.">
         <input list="regions" value={region ?? edge.region} onChange={(e) => setRegion(e.target.value)} />
         <datalist id="regions">{[...new Set(trip.days.map((d) => d.region))].map((r) => <option key={r} value={r} />)}</datalist>
       </Field>
       {stretch && (
-        <label className="check"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep sleeping at {stretch.name} (adds {n} {n === 1 ? 'night' : 'nights'} to that stay)</label>
+        <label className="check">
+          <input type="checkbox" checked={keep} disabled={forced} onChange={(e) => setKeep(e.target.checked)} /> Keep sleeping at {stretch.name} (adds {n} {n === 1 ? 'night' : 'nights'} to that stay{forced ? ', since you are in the middle of it' : ''})
+        </label>
       )}
-      <p className="small">This adds {dates.map(nice).join(', ')}. The trip will then run {nice(side === 'start' ? dates[0] : first.date)} to {nice(side === 'end' ? dates[dates.length - 1] : lastDay.date)}.</p>
+      <p className="small">This adds {dates.map(nice).join(', ')}.{side === 'middle' && later > 0 ? ` The ${later} days after it, and the bookings and stays on them, move ${n} ${n === 1 ? 'day' : 'days'} later. Your real bookings do not move, so check those dates afterwards.` : ''}</p>
       <Actions onSave={save} busy={busy} error={error} />
     </Sheet>
   );
