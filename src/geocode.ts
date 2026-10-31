@@ -23,3 +23,25 @@ export async function nameSpot(p: Point): Promise<string> {
     return 'Pinned spot';
   }
 }
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Finds the pin for a booked place: the full address first, then the name with the end of the address. Searches run one at a time, a second apart, as Nominatim asks. */
+export async function findStayPin(name: string, address?: string): Promise<{ point: Point; exact: boolean } | undefined> {
+  const tail = address?.split(',').slice(-3).join(',').trim();
+  const tries: { q: string; exact: boolean }[] = [
+    ...(address ? [{ q: address, exact: true }] : []),
+    ...(name && tail ? [{ q: `${name}, ${tail}`, exact: true }] : []),
+    ...(tail ? [{ q: tail, exact: false }] : []),
+  ];
+  for (let i = 0; i < tries.length; i++) {
+    if (i) await wait(1100);
+    try {
+      const [hit] = await searchPlace(tries[i].q);
+      if (hit) return { point: tries[i].exact ? hit.point : { ...hit.point, approx: true }, exact: tries[i].exact };
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
