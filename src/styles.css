@@ -559,3 +559,8 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .sec.is-open .sec-head span { display: none; }
 .sec-body { display: grid; gap: 12px; padding: 4px 14px 14px; }
 .leg-label { margin: 0; font-size: 13px; font-weight: 600; text-transform: capitalize; }
+
+.chip.danger { color: #ff8a80; border-color: color-mix(in srgb, #ff8a80 55%, transparent); }
+.delete-confirm { display: grid; gap: 8px; margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, #ff5a4d 12%, var(--card)); }
+.delete-confirm p { margin: 0; font-size: 14px; line-height: 1.45; }
+.delete-confirm .row { display: flex; gap: 8px; }

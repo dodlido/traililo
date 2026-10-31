@@ -161,6 +161,27 @@ export async function saveTrip(b: Bundle, trip: Trip): Promise<number> {
   return data as number;
 }
 
+/** Deletes a trip for good (owner only), with its stored pictures and the copy kept on this device. Throws with a readable message on failure. */
+export async function deleteTrip(session: Session, id: string): Promise<void> {
+  const uid = session.user.id;
+  const { error } = await sb.rpc('delete_trip', { p_trip: id });
+  if (error) throw new Error(error.message);
+  try {
+    const dir = `${uid}/${id}`;
+    const { data } = await sb.storage.from('photos').list(dir, { limit: 1000 });
+    if (data?.length) await sb.storage.from('photos').remove(data.map((f) => `${dir}/${f.name}`));
+  } catch {
+    /* the trip is gone; leftover pictures are harmless */
+  }
+  try {
+    localStorage.removeItem(cacheKey(uid, `trip:${id}`));
+    const list = cacheGet<TripSummary[]>(uid, 'list');
+    if (list) cachePut(uid, 'list', list.filter((t) => t.id !== id));
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function createTrip(title: string, cover: string, trip: Trip): Promise<string> {
   const full = { ...trip, totals: computeTotals(trip) };
   const { data, error } = await sb.rpc('create_trip', {
