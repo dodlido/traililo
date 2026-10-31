@@ -9,7 +9,7 @@ import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
 import type { Tracks } from './MapView.tsx';
 import { Icon } from './Icon.tsx';
-import { minutes } from './derive.ts';
+import { legTimes, minutes } from './derive.ts';
 
 /** A spot picked on the map, to start something from. */
 export interface Start { name: string; point: Point }
@@ -478,6 +478,10 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
             <PlaceSearch keepOpen near={wps[wps.length - 1]?.point} onClear={() => {}} onPick={(name, p) => setWps((w) => [...w, { name: name.split(',')[0].trim(), point: p }])} />
           </Field>
           <div className="two">
+            <Field label="Starts"><input type="time" value={h.startTime ?? ''} onChange={(e) => up({ startTime: e.target.value || undefined })} /></Field>
+            <Field label="Ends"><input type="time" value={h.endTime ?? ''} onChange={(e) => up({ endTime: e.target.value || undefined })} /></Field>
+          </div>
+          <div className="two">
             <Field label="Distance (km)"><input type="number" step="0.1" inputMode="decimal" value={h.distanceKm ?? ''} onChange={(e) => up({ distanceKm: num(e.target.value) })} /></Field>
             <Field label="Climb (m)"><input type="number" inputMode="numeric" value={h.elevationGainM ?? ''} onChange={(e) => up({ elevationGainM: num(e.target.value) })} /></Field>
           </div>
@@ -542,6 +546,17 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
                   {l.toPoint && <p className="pinned">{l.to || 'Pinned spot'}</p>}
                   <PlaceSearch current={l.toPoint} near={l.fromPoint} onPick={(n, p) => void pickLeg(i, 'to', n, p)} onClear={() => patchLeg(i, { toPoint: undefined, path: undefined })} />
                 </Field>
+                {road ? (
+                  <Field label="Leaves at" hint={l.startTime && !l.durationMin ? 'The arrival time is worked out once the trip has a travel time.' : undefined}>
+                    <input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} />
+                    {legTimes(l).end && <p className="road">Arrives about {legTimes(l).end}{legTimes(l).days > 0 ? ' the next day' : ''} (no traffic)</p>}
+                  </Field>
+                ) : (
+                  <div className="two">
+                    <Field label="Departs"><input type="time" value={l.startTime ?? ''} onChange={(e) => patchLeg(i, { startTime: e.target.value || undefined })} /></Field>
+                    <Field label="Arrives"><input type="time" value={l.endTime ?? ''} onChange={(e) => patchLeg(i, { endTime: e.target.value || undefined })} /></Field>
+                  </div>
+                )}
                 {routing === i && <p className="road">{road ? 'Finding the road…' : 'Working it out…'}</p>}
                 {routing !== i && l.fromPoint && l.toPoint && (road ? l.path : true) && (
                   <p className="road">

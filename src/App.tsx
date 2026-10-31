@@ -23,7 +23,7 @@ import { fetchLatest, fresh, saveTrip } from './backend.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
-import { countryName, dayOfMonth, minutes, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
+import { countryName, dayOfMonth, legTimes, minutes, timeSpan, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
 import { isCamp } from './mapkit.ts';
 
 interface TripData {
@@ -850,6 +850,8 @@ function Facts({ entry }: { entry: Entry }) {
   const bits: string[] = [];
   if (entry.kind === 'hike') {
     const h = entry as HikeEntry;
+    const when = timeSpan(h.startTime, h.endTime);
+    if (when) bits.push(when);
     if (h.distanceKm !== undefined) bits.push(km(h.distanceKm));
     if (h.elevationGainM !== undefined && h.elevationGainM > 0) bits.push(`+${h.elevationGainM.toLocaleString('en-GB')} m`);
     const d = minutes(h.durationMin);
@@ -900,6 +902,9 @@ function Facts({ entry }: { entry: Entry }) {
     }
     const l = c.legs[0];
     const b: string[] = [];
+    const t = l ? legTimes(l) : undefined;
+    const when = t && timeSpan(t.start, t.end, t.days);
+    if (when) b.push(when);
     const d = minutes(l?.durationMin);
     if (d) b.push(d);
     if (l?.distanceKm !== undefined) b.push(km(l.distanceKm));
@@ -911,12 +916,15 @@ function Facts({ entry }: { entry: Entry }) {
 
 function LegView({ leg }: { leg: Leg }) {
   const d = minutes(leg.durationMin);
+  const t = legTimes(leg);
+  const when = timeSpan(t.start, t.end, t.days);
   return (
     <li className={`leg leg-${leg.mode}`}>
       <span className="leg-mode">{leg.mode}</span>
       <span>
         {leg.from} to {leg.to}
       </span>
+      {when && <span className="meta">{when}</span>}
       {d && <span className="meta">{d}</span>}
       {leg.note && <span className="meta">{leg.note}</span>}
     </li>

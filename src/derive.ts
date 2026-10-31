@@ -1,5 +1,5 @@
 // Numbers and groupings the viewer needs, all computed from the imported trip.
-import type { Day, Entry, HikeEntry, Stay, Trip } from './model.ts';
+import type { Day, Entry, HikeEntry, Leg, Stay, Trip } from './model.ts';
 
 export interface DayHiking {
   /** Planned (not optional) hiking distance that day. */
@@ -64,6 +64,31 @@ export const monthShort = (iso: string) => fmt({ month: 'short' }).format(parse(
 export const longDate = (iso: string) => fmt({ day: 'numeric', month: 'short', year: 'numeric' }).format(parse(iso));
 export const shortDate = (iso: string) => fmt({ day: 'numeric', month: 'short' }).format(parse(iso));
 
+const ROAD_MODES = ['drive', 'bus', 'taxi'];
+const toMin = (t: string) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t); return m ? +m[1] * 60 + +m[2] : undefined; };
+/** Adds minutes to a clock time; `days` is how many midnights it crossed. */
+export function addMinutes(t: string, min: number): { time: string; days: number } | undefined {
+  const a = toMin(t);
+  if (a === undefined) return undefined;
+  const tot = a + Math.round(min);
+  const m = ((tot % 1440) + 1440) % 1440;
+  return { time: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, days: Math.floor(tot / 1440) };
+}
+/** When a leg starts and ends. A drive, bus or taxi ends when the travel time after its start has passed (inferred); a flight or ferry uses the end that was entered. */
+export function legTimes(l: Pick<Leg, 'mode' | 'startTime' | 'endTime' | 'durationMin'>): { start?: string; end?: string; days: number; inferred: boolean } {
+  if (ROAD_MODES.includes(l.mode)) {
+    const e = l.startTime && l.durationMin ? addMinutes(l.startTime, l.durationMin) : undefined;
+    return { start: l.startTime, end: e?.time, days: e?.days ?? 0, inferred: !!e };
+  }
+  const over = l.startTime && l.endTime && toMin(l.endTime)! < toMin(l.startTime)! ? 1 : 0;
+  return { start: l.startTime, end: l.endTime, days: over, inferred: false };
+}
+/** "08:00 to 10:30", or "08:00" alone, with +1 after an end on the next day. */
+export function timeSpan(start?: string, end?: string, days = 0): string | undefined {
+  if (!start && !end) return undefined;
+  const e = end ? `${end}${days > 0 ? ` +${days}` : ''}` : undefined;
+  return start && e ? `${start} to ${e}` : (start ?? e);
+}
 export function minutes(min?: number): string | undefined {
   if (min === undefined) return undefined;
   const h = Math.floor(min / 60);

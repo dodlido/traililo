@@ -36,6 +36,10 @@ export interface Leg {
   to?: string;
   durationMin?: number;
   distanceKm?: number;
+  /** "08:00". Set for every kind of leg. */
+  startTime?: string;
+  /** Entered for flights and ferries. For a drive, bus or taxi the end is worked out from the start and the travel time. */
+  endTime?: string;
   note?: string;
   fromPoint?: Point;
   toPoint?: Point;
@@ -78,6 +82,9 @@ export interface HikeEntry extends EntryBase {
   kind: 'hike';
   distanceKm?: number;
   durationMin?: number;
+  /** Planned start and end, "08:00". */
+  startTime?: string;
+  endTime?: string;
   elevationGainM?: number;
   difficulty?: 'easy' | 'moderate' | 'moderate-hard' | 'hard';
   shape?: 'out-and-back' | 'loop' | 'circuit' | 'one-way';
