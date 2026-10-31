@@ -347,7 +347,7 @@ ul, ol { list-style: none; }
 .map-canvas.far .pin.stay .disc { border-width: 1.5px; border-radius: 5px; }
 .map-canvas.far .pin.stay svg { display: none; }
 
-/* ---------- plan page, weather, journal, offline ---------- */
+/* ---------- plan page, weather, journal ---------- */
 .page-sub { color: var(--fog); font-size: 14px; margin-top: 8px; }
 .plan-block { padding: 8px 20px 18px; display: grid; gap: 10px; }
 .plan-block h2 { font-family: var(--display); font-weight: 800; font-size: 28px; text-transform: uppercase; margin-top: 8px; }
@@ -376,12 +376,6 @@ ul, ol { list-style: none; }
 .journal-photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .journal-photos button { position: absolute; top: 4px; right: 4px; }
 .journal textarea, .sheet-body textarea.journal-text { width: 100%; min-height: 160px; font: inherit; font-size: 15px; line-height: 1.5; color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; resize: vertical; }
-.offline-card { margin: 0 20px 14px; background: var(--card); border-radius: 16px; padding: 12px 14px; display: grid; gap: 8px; }
-.offline-card h2 { font-size: 15px; font-weight: 700; }
-.offline-card p { font-size: 13px; color: var(--fog); }
-.offline-bar { height: 6px; border-radius: 3px; background: var(--ink-2); overflow: hidden; }
-.offline-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
-.offline-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .map-pick { display: grid; gap: 4px; margin-top: 8px; }
 .map-pick-canvas { height: 280px; border-radius: 12px; overflow: hidden; }
 .seg-switch { display: flex; gap: 6px; }

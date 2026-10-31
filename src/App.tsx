@@ -3,6 +3,7 @@ import { PHOTOS, photoCredit, photoPage } from './photos.ts';
 import { deletePhoto, photoUrlOf, uploadPhoto } from './backend.ts';
 import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
+import { OpenTrail } from './OpenTrail.tsx';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, Stay, Trip } from './model.ts';
 import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
@@ -10,7 +11,6 @@ import { nameSpot } from './geocode.ts';
 import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
-import { OfflineCard } from './OfflineCard.tsx';
 import { Plan } from './Plan.tsx';
 import { JournalBlock, JournalEditor } from './Journal.tsx';
 import { LineEditor, LineRow } from './Line.tsx';
@@ -399,7 +399,6 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
       </header>
 
       <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
-      <OfflineCard trip={trip} tracks={tracks} />
 
       <div className="strip" role="list" aria-label="The route, by place">
         {runs.map((run, i) => (
@@ -818,6 +817,7 @@ function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; sha
             <Icon name="map" size={16} /> {tracks[e.id] ? 'Show trail on map' : 'Show on map'}
           </button>
         )}
+        {tracks[e.id] && <OpenTrail title={tracks[e.id].name || e.title} lines={tracks[e.id].lines} />}
         {!shared && e.booking && (
           <p className="meta-line">
             {e.booking.bookedBy ? `Booked by ${e.booking.bookedBy}` : 'Booked'}

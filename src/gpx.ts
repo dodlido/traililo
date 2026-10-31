@@ -91,3 +91,16 @@ export function parseGpx(text: string, fallbackName: string): ParsedTrack {
   const name = (doc.querySelector('trk > name, rte > name, metadata > name')?.textContent ?? '').trim() || fallbackName;
   return { lines, km: Math.round(km * 10) / 10, name, gain: haveEle ? Math.round(gain) : undefined };
 }
+
+const esc = (s: string) => s.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]!);
+
+/** Writes a track back out as a GPX file any maps app can open. The start is also a waypoint, so apps show a pin there. */
+export function toGpx(name: string, lines: number[][][]): string {
+  const first = lines[0]?.[0];
+  const seg = (l: number[][]) => `<trkseg>${l.map(([x, y]) => `<trkpt lat="${y}" lon="${x}"/>`).join('')}</trkseg>`;
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="TraiLilo" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+    (first ? `<wpt lat="${first[1]}" lon="${first[0]}"><name>${esc(name)} (start)</name></wpt>\n` : '') +
+    `<trk><name>${esc(name)}</name>${lines.map(seg).join('')}</trk>\n</gpx>\n`
+  );
+}
