@@ -59,15 +59,29 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
 }
 
-const clean = (s: string) => s.replace(/[​-‏⁠﻿]/g, '').replace(/ /g, ' ').replace(/\r/g, '');
+const clean = (s: string) =>
+  s
+    .replace(/[\u200b-\u200f\u2060\ufeff]/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/\[[\w.-]+\.(?:png|gif|jpe?g|svg)\]/gi, ''); // icon names that come along when an email is copied as text
 
-/** "14:00" or "14:00–23:00", read from the text right after a date. */
+/** "14:00" or "14:00–23:00", read from the text right after a date. Handles 12-hour times like "1:00 PM". */
 function timeAfter(text: string, from: number): string | undefined {
   const w = text.slice(from, from + 70).split(/check[\s-]?(?:in|out)/i)[0];
-  const m = w.match(/(\d{1,2}[:.]\d{2})(?:\s*(?:[-–—]|to)\s*(\d{1,2}[:.]\d{2}))?/);
+  const T = String.raw`(\d{1,2})[:.](\d{2})\s*([AaPp]\.?[Mm]\.?)?`;
+  const m = w.match(new RegExp(`${T}(?:\\s*(?:[-–—]|to)\\s*${T})?`));
   if (!m) return undefined;
-  const t = (x: string) => x.replace('.', ':').replace(/^(\d):/, '0$1:');
-  return m[2] ? `${t(m[1])}–${t(m[2])}` : t(m[1]);
+  const t = (h: string, min: string, ap?: string) => {
+    let n = +h;
+    if (ap) {
+      const pm = /^p/i.test(ap);
+      n = (n % 12) + (pm ? 12 : 0);
+    }
+    return `${String(n).padStart(2, '0')}:${min}`;
+  };
+  const a = t(m[1], m[2], m[3]);
+  return m[4] ? `${a}–${t(m[4], m[5], m[6])}` : a;
 }
 
 const NOT_A_NAME = /^(thank|your booking|booking (?:is )?confirm|reservation|confirmed|hi\b|hello|dear|view|manage|show|get directions|see |check[\s-]?(?:in|out)|confirmation|pin|address|phone|total|price|genius|free cancellation|we\b|here|booking\.com)/i;
@@ -166,14 +180,22 @@ export function parseBookingEmail(input: string): EmailBooking {
   if (out.address) out.address = out.address.replace(/\s*(?:show (?:on )?map|view (?:on )?map|get directions)\s*$/i, '').trim();
 
   // town and free-cancellation deadline
-  const town = text.match(/\bbooking in ([^\n.!]+?) is confirmed/i)?.[1];
+  const town = text.match(/\byour \w+ in ([^\n.!]+?) is confirmed/i)?.[1];
   if (town) out.town = town.trim();
-  const cancel = text.match(/cancel for free until\s+([^\n\[]*?\d{1,2}:\d{2})/i)?.[1];
+  const cancel = text.match(/cancel for free until\s+([^\n\[]*?\d{1,2}:\d{2}(?:\s*[AP]M)?)/i)?.[1];
   if (cancel) out.cancelUntil = cancel.replace(/\s+/g, ' ').trim();
 
   // name: "X is expecting you", "booking for/at X", a labelled line, or the line just above the address
   const expecting = text.match(/^\s*(.+?) is expecting you\b/im)?.[1];
   if (expecting) out.name = tidyName(expecting);
+  // the subject line, if it was pasted too: "Your booking is confirmed at X"
+  if (!out.name) out.name = tidyName(text.match(/\bconfirmed at ([^\n]+)/i)?.[1] ?? '');
+  // the property's name sits on its own line just before the "Stay safe online" notice
+  if (!out.name) {
+    const k = lines.findIndex((l) => /^stay safe online/i.test(l));
+    if (k > 0 && !NOT_A_NAME.test(lines[k - 1]) && !/[.:]$/.test(lines[k - 1])) out.name = tidyName(lines[k - 1]);
+  }
+  if (!out.name) out.name = tidyName(text.match(/please inform (.+?) in advance/i)?.[1] ?? '');
   if (!out.name) for (const l of lines) {
     const m = l.match(/(?:booking|reservation)\s+(?:confirmation\s+)?(?:for|at)\s+(.+)$/i);
     const n = m && tidyName(m[1].split(/\s[-–—|]\s/)[0]);
@@ -190,7 +212,7 @@ export function parseBookingEmail(input: string): EmailBooking {
     let i = addrIdx - 1;
     while (i >= 0 && LINK_TEXT.test(lines[i])) i--;
     const prev = lines[i];
-    if (prev && !NOT_A_NAME.test(prev) && !/:\s*$/.test(prev)) out.name = tidyName(prev);
+    if (prev && !NOT_A_NAME.test(prev) && !/^(you|\d)/i.test(prev) && !/:\s*$/.test(prev)) out.name = tidyName(prev);
   }
 
   if (!out.name) warnings.push('I could not find the place name. Type it in.');
