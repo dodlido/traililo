@@ -118,7 +118,15 @@ export interface MealEntry extends EntryBase {
   partySize?: number;
 }
 
-export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry | MealEntry;
+/** Your own words (and the pictures you pin to them) at a point in the day, placed between activities. Only the owner sees it. */
+export interface JournalEntry extends EntryBase {
+  kind: 'journal';
+  text: string;
+  /** Drive file ids of pictures from this day that belong here, whatever time they were taken. */
+  photoIds?: string[];
+}
+
+export type Entry = CommuteEntry | HikeEntry | ExperienceEntry | NoteEntry | MealEntry | JournalEntry;
 
 export type StayType = 'hotel' | 'airbnb' | 'camp' | 'glamping' | 'home' | 'other';
 

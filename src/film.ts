@@ -212,6 +212,9 @@ interface Item {
   move?: Omit<MoveScene, keyof Base | 'shots'>;
   stop?: { cat: Cat; title: string; eyebrow: string; facts: string[]; at: Point; wide: boolean; hikeKm: number; climb: number };
   photos: DrivePhoto[];
+  /** A journal entry: pictures are pinned to it and none are matched in by time. */
+  pinned?: boolean;
+  text?: string;
 }
 
 const SAME_PLACE_KM = 0.4;
@@ -401,6 +404,13 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
         }
         continue;
       }
+      if (e.kind === 'journal') {
+        const here = cur ?? sp;
+        if (!here) continue;
+        const mine = withPhotos ? (day.drivePhotos ?? []).filter((p) => e.photoIds?.includes(p.id)).sort(byTaken) : [];
+        items.push({ kind: 'stop', span: {}, est: 0, pinned: true, text: e.text.trim() ? readable(e.text) : undefined, stop: { cat: 'town', title: e.title, eyebrow: 'Journal', facts: [], at: here, wide: false, hikeKm: 0, climb: 0 }, photos: mine });
+        continue;
+      }
       if (e.kind === 'note' || e.optional) continue;
       const at = e.at ?? cur ?? sp;
       if (!at) continue;
@@ -420,8 +430,9 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
     }
     if (sp && cur) goTo(sp, stay?.name ?? day.region);
 
-    const photos = withPhotos ? (day.drivePhotos ?? []) : [];
-    const leftover = assignPhotos(items, photos).sort(byTaken);
+    const pinnedIds = new Set(day.entries.flatMap((e) => (e.kind === 'journal' ? (e.photoIds ?? []) : [])));
+    const photos = withPhotos ? (day.drivePhotos ?? []).filter((p) => !pinnedIds.has(p.id)) : [];
+    const leftover = assignPhotos(items.filter((it) => !it.pinned), photos).sort(byTaken);
 
     // ----- the scenes of the day -----
     if (!cur) return;
@@ -451,7 +462,7 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
       const shown = pick(it.photos.sort(byTaken), cap);
       const textMs = 0;
       const nat = 2200 + Math.max(shown.length * 1900, textMs);
-      push({ kind: 'stop', ...blank(di), cat: s.cat, title: s.title, eyebrow: s.eyebrow, facts: s.facts, at: s.at, photos: shown, heading, wide: s.wide, taken: it.photos.length, hikeKm: s.hikeKm, climb: s.climb }, s.cat === 'hike' ? Math.max(nat, 3600) : nat, shown.length ? 2400 : 1500);
+      push({ kind: 'stop', ...blank(di), cat: s.cat, title: s.title, eyebrow: s.eyebrow, facts: s.facts, at: s.at, photos: shown, heading, wide: s.wide, taken: it.photos.length, hikeKm: s.hikeKm, climb: s.climb, ...(it.text ? { text: it.text } : {}) }, s.cat === 'hike' ? Math.max(nat, 3600) : nat, shown.length ? 2400 : 1500);
     }
 
     // the night: where the day's journal and any pictures from the evening go

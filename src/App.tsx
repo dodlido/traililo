@@ -16,8 +16,10 @@ import { Icon, modeIcon } from './Icon.tsx';
 import { COVER, Scene, themeFor } from './scenes.tsx';
 import type { Bundle } from './backend.ts';
 import { Plan } from './Plan.tsx';
-import { JournalBlock, JournalEditor } from './Journal.tsx';
+import { JournalBlock, JournalEditor, MomentEditor } from './Journal.tsx';
 import { DrivePhotosBlock } from './DrivePhotos.tsx';
+import { Pic } from './Pic.tsx';
+import { driveConnected } from './drive.ts';
 import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { PlanCtx } from './Pick.tsx';
@@ -51,7 +53,7 @@ const useT = () => useContext(TripCtx);
 const ShowCtx = createContext<(id: string) => void>(() => {});
 const TodayCtx = createContext<Today | null>(null);
 const km = (v: number) => `${Math.round(v * 10) / 10} km`;
-const PERSONAL_NOTE = /^Assumed:/i;
+const PERSONAL_NOTE = /\b(Etay|Lior)\b|^Assumed:/i;
 
 type Route = { tab: 'journey' | 'map' | 'stays' | 'plan' | 'recap'; chapter: number | null };
 function parseSub(sub: string, runsLen: number): Route {
@@ -332,7 +334,8 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       {toast && <div className={toast.bad ? 'toast bad' : 'toast'} role="status">{toast.text}</div>}
       {sheet?.type === 'add' && <AddMenu date={sheet.date} start={sheet.start} open={setSheet} onClose={() => setSheet(null)} />}
       <PlanCtx.Provider value={{ trip, tracks, date: sheet && 'date' in sheet && sheet.date ? sheet.date : sheet?.type === 'stay' ? trip.stays.find((x) => x.id === sheet.id)?.checkIn : undefined }}>
-      {sheet?.type === 'entry' && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} start={sheet.start} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'entry' && (sheet.kind === 'journal' || trip.days.find((d) => d.date === sheet.date)?.entries.find((e) => e.id === sheet.id)?.kind === 'journal') && <MomentEditor key={`m${sheet.date}${sheet.id ?? sheet.at}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} at={sheet.at} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'entry' && !(sheet.kind === 'journal' || trip.days.find((d) => d.date === sheet.date)?.entries.find((e) => e.id === sheet.id)?.kind === 'journal') && <EntryEditor key={`${sheet.date}${sheet.id ?? sheet.kind}`} trip={trip} mutate={commit} setTrack={setTrack} date={sheet.date} id={sheet.id} kind={sheet.kind} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'stay' && <StayEditor key={sheet.id ?? 'new'} trip={trip} mutate={commit} id={sheet.id} date={sheet.date} start={sheet.start} onClose={() => setSheet(null)} />}
       {sheet?.type === 'journal' && <JournalEditor key={sheet.date} trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       {sheet?.type === 'line' && <LineEditor key={`${sheet.date}${sheet.id ?? 'new'}`} trip={trip} mutate={commit} date={sheet.date} id={sheet.id} start={sheet.start} onClose={() => setSheet(null)} />}
@@ -685,7 +688,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         {canEdit && <DriveGap day={day} index={-1} stay={stay} prevStay={prevStay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
         {day.entries.map((e, i) => (
           <Fragment key={e.id}>
-            <EntryView entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} />
+            <EntryView entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} day={day} />
             {canEdit && <DriveGap day={day} index={i} stay={stay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
           </Fragment>
         ))}
@@ -773,7 +776,7 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   );
 }
 
-function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; shared: boolean; date: string; index: number; count: number }) {
+function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry; shared: boolean; date: string; index: number; count: number; day: Day }) {
   const { tracks, editing, openSheet, setTrack, mutate } = useT();
   const showOnMap = useContext(ShowCtx);
   // swap with the neighbour; the order shown is the order saved
@@ -802,6 +805,45 @@ function EntryView({ entry: e, shared, date, index, count }: { entry: Entry; sha
   };
   const mappable = !!(tracks[e.id] || e.at);
   const notes = shared ? e.notes.filter((n) => !PERSONAL_NOTE.test(n)) : e.notes;
+  if (e.kind === 'journal') {
+    if (shared) return null;
+    const pics = day.drivePhotos?.filter((p) => e.photoIds?.includes(p.id)) ?? [];
+    return (
+      <article className="entry kind-journal">
+        <span className="entry-icon">
+          <Icon name="edit" size={20} />
+        </span>
+        <div className="entry-main">
+          {e.title && <h3 dir="auto">{e.title}</h3>}
+          {e.text && <p className="journal-line" dir="auto">{e.text}</p>}
+          {pics.length > 0 && (
+            <div className="journal-pins">
+              {pics.map((p) => (
+                <Pic key={p.id} photo={p} ready={driveConnected()} size={240} />
+              ))}
+            </div>
+          )}
+          {editing && (
+            <span className="reorder" role="group" aria-label="Change this entry">
+              <button type="button" className="show-map edit-entry" onClick={() => openSheet({ type: 'entry', date, id: e.id })}>
+                <Icon name="edit" size={16} /> Edit
+              </button>
+              {count > 1 && (
+                <>
+                  <button type="button" className="show-map edit-entry" disabled={index === 0} aria-label="Move up" onClick={() => move(-1)}>
+                    <span className="arrow-up"><Icon name="back" size={16} /></span> Up
+                  </button>
+                  <button type="button" className="show-map edit-entry" disabled={index === count - 1} aria-label="Move down" onClick={() => move(1)}>
+                    <span className="arrow-down"><Icon name="back" size={16} /></span> Down
+                  </button>
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      </article>
+    );
+  }
   const icon = e.kind === 'hike' ? 'hike' : e.kind === 'experience' ? 'spark' : e.kind === 'meal' ? 'fork' : e.kind === 'hang' ? 'cocktail' : e.kind === 'commute' ? modeIcon((e as CommuteEntry).legs[0]?.mode) : 'note';
   return (
     <article className={`entry kind-${e.kind}${e.optional ? ' is-optional' : ''}`}>

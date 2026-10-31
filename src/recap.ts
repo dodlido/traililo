@@ -77,6 +77,13 @@ export function snippetOf(text: string, max = 170): string {
   return cut.slice(0, sp > 40 ? sp : max).replace(/[\s,;:.\-–—]+$/, '') + '…';
 }
 
+/** Everything written on a day: its journal page and the journal entries placed between its activities. */
+export const dayText = (d: Day): string =>
+  [d.journal?.text ?? '', ...d.entries.map((e) => (e.kind === 'journal' ? e.text : ''))]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(' ');
+
 const byTaken = (a: DrivePhoto, b: DrivePhoto) => (a.taken ?? '').localeCompare(b.taken ?? '') || a.name.localeCompare(b.name);
 
 export function computeRecap(trip: Trip, date = todayDate()): Recap {
@@ -125,7 +132,7 @@ export function computeRecap(trip: Trip, date = todayDate()): Recap {
   for (let i = 1; i < route.length; i++) stopsKm += km(route[i - 1], route[i]);
 
   const photoDays = days.filter((d) => d.drivePhotos?.length);
-  const written = days.filter((d) => d.journal?.text.trim());
+  const written = days.filter((d) => dayText(d));
   const stats: RecapStats = {
     days: days.length,
     nights,
@@ -140,7 +147,7 @@ export function computeRecap(trip: Trip, date = todayDate()): Recap {
     ferries,
     photos: photoDays.reduce((n, d) => n + (d.drivePhotos?.length ?? 0), 0),
     written: written.length,
-    words: written.reduce((n, d) => n + words(d.journal!.text), 0),
+    words: written.reduce((n, d) => n + words(dayText(d)), 0),
   };
 
   // ----- the moments worth a mention -----
@@ -156,8 +163,8 @@ export function computeRecap(trip: Trip, date = todayDate()): Recap {
   if (stay) all.push({ key: `stay:${stay.id}`, icon: 'bed', title: 'Longest stay', detail: `${stay.nights} nights · ${stay.name}`, date: stay.checkIn });
   const busy = [...photoDays].sort((a, b) => b.drivePhotos!.length - a.drivePhotos!.length)[0];
   if (busy && busy.drivePhotos!.length >= 3) all.push({ key: `photos:${busy.date}`, icon: 'image', title: 'Most photographed day', detail: `${busy.drivePhotos!.length} pictures · ${busy.region}`, date: busy.date });
-  const story = [...written].sort((a, b) => words(b.journal!.text) - words(a.journal!.text))[0];
-  if (story && words(story.journal!.text) >= 25) all.push({ key: `story:${story.date}`, icon: 'note', title: 'Most written day', detail: `${words(story.journal!.text)} words · ${story.region}`, date: story.date });
+  const story = [...written].sort((a, b) => words(dayText(b)) - words(dayText(a)))[0];
+  if (story && words(dayText(story)) >= 25) all.push({ key: `story:${story.date}`, icon: 'note', title: 'Most written day', detail: `${words(dayText(story))} words · ${story.region}`, date: story.date });
   all.sort((a, b) => a.date.localeCompare(b.date));
   const off = new Set(trip.recapHidden ?? []);
 
@@ -166,7 +173,7 @@ export function computeRecap(trip: Trip, date = todayDate()): Recap {
   regionRuns(trip).forEach((run, idx) => {
     const mine = run.days.filter((d) => d.date <= upTo && state !== 'before');
     if (mine.length === 0) return;
-    const rd: RecapDay[] = mine.map((d) => ({ day: d, photos: [...(d.drivePhotos ?? [])].sort(byTaken), snippet: d.journal?.text ? snippetOf(d.journal.text) : '' }));
+    const rd: RecapDay[] = mine.map((d) => ({ day: d, photos: [...(d.drivePhotos ?? [])].sort(byTaken), snippet: dayText(d) ? snippetOf(dayText(d)) : '' }));
     const best = [...rd].sort((a, b) => b.photos.length - a.photos.length)[0];
     chapters.push({
       idx,

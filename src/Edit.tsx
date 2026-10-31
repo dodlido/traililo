@@ -17,7 +17,7 @@ export interface Start { name: string; point: Point }
 
 export type SheetState =
   | { type: 'add'; date: string; start?: Start }
-  | { type: 'entry'; date: string; id?: string; kind?: Entry['kind']; start?: Start }
+  | { type: 'entry'; date: string; id?: string; kind?: Entry['kind']; start?: Start; at?: number }
   | { type: 'stay'; id?: string; date?: string; start?: Start }
   | { type: 'day'; date: string }
   | { type: 'journal'; date: string }
@@ -206,6 +206,7 @@ export function AddMenu({ date, start, open, onClose }: { date: string; start?: 
     { kind: 'meal', label: 'Restaurant', icon: 'fork' },
     { kind: 'hang', label: 'Night out', icon: 'cocktail' },
     { kind: 'commute', label: 'Getting there', icon: 'bus' },
+    { kind: 'journal', label: 'Journal', icon: 'edit' },
     { kind: 'note', label: 'Note', icon: 'note' },
   ];
   return (
@@ -437,7 +438,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
       [dd.entries[i], dd.entries[j]] = [dd.entries[j], dd.entries[i]];
     });
 
-  const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note', meal: 'restaurant', hang: 'night out' }[d.kind];
+  const kindLabel = { hike: 'hike', experience: 'activity', commute: 'travel', note: 'note', meal: 'restaurant', hang: 'night out', journal: 'journal' }[d.kind];
   const wizard = isNew && !quick;
   const titleField = (
       <Field label={d.kind === 'commute' ? 'Title (optional)' : d.kind === 'meal' ? 'Restaurant' : d.kind === 'hang' ? 'Place or show' : 'Name'}>
