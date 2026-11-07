@@ -10,7 +10,7 @@ import { computeRecap, type Moment, type Recap, type RecapChapter, type RecapDay
 import { countryName, longDate, monthShort, dayOfMonth, shortDate, weekday } from './derive.ts';
 import { themeFor } from './scenes.tsx';
 const RecapFilm = lazy(() => import('./Film.tsx').then((m) => ({ default: m.RecapFilm })));
-import { buildFilm } from './film.ts';
+import { buildFilm, type FilmLength } from './film.ts';
 
 function Sketch({ route }: { route: Point[] }) {
   if (route.length < 2) return null;
@@ -135,6 +135,7 @@ export function RecapView({ trip, title, canEdit, mutate, go }: { trip: Trip; ti
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(false);
   const [film, setFilm] = useState(false);
+  const [length, setLength] = useState<FilmLength>('standard');
   const r = useMemo(() => computeRecap(trip), [trip]);
   const playable = useMemo(() => r.state !== 'before' && !buildFilm(trip, r.upTo, { photos: false }).empty, [trip, r]);
   // the film is a layer over the page: the back button closes it rather than leaving the recap
@@ -221,11 +222,20 @@ export function RecapView({ trip, title, canEdit, mutate, go }: { trip: Trip; ti
               </span>
             </button>
           )}
+          {playable && (
+            <div className="recap-length" role="group" aria-label="How long the film is">
+              {(['short', 'standard', 'long'] as const).map((l) => (
+                <button key={l} type="button" className={length === l ? 'chip is-on' : 'chip'} aria-pressed={length === l} onClick={() => setLength(l)}>
+                  {l === 'short' ? 'Short' : l === 'long' ? 'Long, more time on each picture' : 'Standard'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
       {film && (
         <Suspense fallback={null}>
-          <RecapFilm trip={trip} title={title} upTo={r.upTo} onClose={closeFilm} />
+          <RecapFilm trip={trip} title={title} upTo={r.upTo} length={length} onClose={closeFilm} />
         </Suspense>
       )}
 

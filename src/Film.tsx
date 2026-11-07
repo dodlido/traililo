@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { createPortal } from 'react-dom';
 import * as maplibregl from 'maplibre-gl';
 import type { Trip } from './model.ts';
-import { buildFilm, headingAt, kmBetween, labelOfMode, pathUpTo, pointAt, sceneAt, type Film, type LngLat, type Mode, type MoveScene, type Scene, type StopScene } from './film.ts';
+import { buildFilm, headingAt, kmBetween, labelOfMode, pathUpTo, pointAt, sceneAt, type Film, type FilmLength, type LngLat, type Mode, type MoveScene, type Scene, type StopScene } from './film.ts';
 import { CATS, FERRY, PLANE, glyphSvg } from './mapkit.ts';
 import { connectDrive, driveAvailable, driveConnected, locateInDrive, pictureSrc } from './drive.ts';
 import { Icon } from './Icon.tsx';
@@ -102,7 +102,7 @@ interface Pin {
   photoId?: string;
 }
 
-export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: string; upTo: string; onClose: () => void }) {
+export function RecapFilm({ trip, title, upTo, length, onClose }: { trip: Trip; title: string; upTo: string; length?: FilmLength; onClose: () => void }) {
   const [, tick] = useState(0);
   const [ready, setReady] = useState(driveConnected());
   const [busy, setBusy] = useState(false);
@@ -116,7 +116,7 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
 
   const hasPhotos = useMemo(() => trip.days.some((d) => d.date <= upTo && d.drivePhotos?.length), [trip, upTo]);
   const [spots, setSpots] = useState<Map<string, { lat: number; lon: number }> | undefined>();
-  const film = useMemo(() => buildFilm(trip, upTo, { photos: ready, locations: spots }), [trip, upTo, ready, spots]);
+  const film = useMemo(() => buildFilm(trip, upTo, { photos: ready, locations: spots, length }), [trip, upTo, ready, spots, length]);
 
   const box = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);

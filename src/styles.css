@@ -830,3 +830,4 @@ html { font-size: calc(16px * var(--text-scale, 1)); }
 .size-row .chip { border-color: var(--rule); background: var(--ink-2); }
 .strip-note { margin: -14px 20px 16px; font-size: calc(12.5rem / 16); color: var(--fog); }
 .tag.warn { background: color-mix(in srgb, var(--amber) 22%, var(--ink-2)); color: var(--amber); }
+.recap-length { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

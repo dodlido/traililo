@@ -395,7 +395,10 @@ export interface FilmOptions {
   photos?: boolean;
   /** Seconds the film should roughly last at most. */
   budget?: number;
+  /** Short: a quick tour. Long: more time on each place and every picture kept longer on screen. */
+  length?: FilmLength;
 }
+export type FilmLength = 'short' | 'standard' | 'long';
 
 const zero = (): Odo => ({ km: 0, hike: 0, climb: 0, photos: 0 });
 
@@ -404,11 +407,13 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
   const days = trip.days.filter((d) => d.date <= upTo);
   const stays = new Map<string, Stay>(trip.stays.map((s) => [s.id, s]));
   const total = days.length;
-  const cap = total <= 4 ? 8 : total <= 10 ? 6 : total <= 20 ? 4 : 3;
-  const shotCap = total <= 10 ? 4 : 2;
+  const long = opts.length === 'long';
+  const stretch = long ? 1.9 : opts.length === 'short' ? 0.6 : 1;
+  const cap = (total <= 4 ? 8 : total <= 10 ? 6 : total <= 20 ? 4 : 3) * (long ? 2 : 1);
+  const shotCap = (total <= 10 ? 4 : 2) * (long ? 2 : 1);
   // a long trip gets shorter scenes, so it still plays in a few minutes
   const crowd = total <= 6 ? 1 : total <= 14 ? 0.8 : 0.6;
-  const budget = (opts.budget ?? Math.max(60, Math.min(210, 42 + 8 * total))) * 1000;
+  const budget = (opts.budget ?? Math.max(60, Math.min(210, 42 + 8 * total)) * stretch) * 1000;
 
   type Draft = { scene: Scene; nat: number; min: number; fixed?: boolean };
   const drafts: Draft[] = [];
