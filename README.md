@@ -11,9 +11,9 @@ two-step code, and the database itself refuses to return anything before both.
 | --- | --- | --- |
 | Owner | everything | yes |
 | Travel partner | everything | yes (same editing rights as the owner, except deleting the trip and sharing it) |
-| Friend | the friends' version: no bookings, to-dos, packing, private notes or unshared journals | no |
+| Friend | the friends' version: no bookings, to-dos, packing, private notes, journal entries, Drive pictures or unshared journals; no position for Home | no |
 
-Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_members`). The friends' version is built by
+Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_members`). The recap (including the film) is for the owner only. The friends' version is built by
 `publicVersion()` in `src/privacy.ts`, and the database stores it separately from the full trip.
 
 ## What it does
@@ -25,31 +25,48 @@ Sharing is by email from the trip's page (`share_trip`, `unshare_trip`, `list_me
 - **Hikes**: either from a link (GPX, AllTrails, GetYourGuide) or by hand (waypoints you search for or pin, in order).
 - **Hand-drawn routes**: lines on the map that also appear as entries in the journey and can be edited.
 - **Place search and map fields** everywhere show the whole plan (stays, hikes, activities, travel stops, spots) as labelled dots, plus every trail and drive as lines, centred on the day being edited.
-- **Plan tab** (editors only): what to book per day, weather per region (Open-Meteo), and a packing list.
+- **Plan tab** (editors only): what to book per day, weather per region and a packing list. Weather (`weather.ts`) is the Open-Meteo forecast when a day is within about two weeks, otherwise the same dates last year; each day also shows its weather (`DayWeather.tsx`). The packing list (`packing.ts`) is generated from the trip, then you tick, add and remove items.
+- **Today mode**: while the trip is on, the journey opens on today's chapter; before it starts the home screen counts down the days (`today.ts`).
+- **Home**: a "Home" kind of place to sleep whose position is set once on the account (`home.ts`), never stored in a trip. Friends' copies get no position for it and no road that starts or ends there.
+- **Restaurants and nights out**: `meal` and `hang` entries with time, party size and a booking.
+- **Journal entries**: add a "Journal" entry anywhere in a day, between activities (also from the gaps between entries). It holds your words and the Drive pictures you pin to it. Owner only; never in the friends' copy.
 - **Trail files**: every hike with a trail has an "Open in maps app" button. It hands the trail as a GPX file to the phone's share sheet (Organic Maps, CoMaps, Maps.me, OsmAnd, Gaia and so on), or downloads it on a computer. Use that app for offline maps and live tracking; TraiLilo does not store map tiles. The service worker (`public/sw.js`) only keeps the app itself so it opens on a weak signal.
-- **Booking import**: in the place-to-sleep editor, paste a Booking.com or Airbnb confirmation email and the form fills in the name, dates, confirmation number, address, phone, PIN, free-cancellation deadline and a map pin. The text is read in the browser (`bookingEmail.ts`) and never stored. The address, phone and PIN go in the private notes, so friends never see them. Booking.com emails in English or Hebrew, Airbnb emails in English (Airbnb's map link also gives the exact pin); whatever is not found is left blank for you to fill in. "Import bookings" (on the journey page in edit mode) does the same for a whole file of parsed confirmations (from either site) at once: it matches each booking to a stay by night and name, shows what it will change, and only saves what you tick.
+- **Booking import**: in the place-to-sleep editor, paste a Booking.com or Airbnb confirmation email and the form fills in the name, dates, confirmation number, address, phone, PIN, free-cancellation deadline and a map pin. The text is read in the browser (`bookingEmail.ts`) and never stored. The address, phone and PIN go in the private notes, so friends never see them. Booking.com emails in English or Hebrew, Airbnb emails in English (Airbnb's map link also gives the exact pin); whatever is not found is left blank for you to fill in.
+- **Import bookings** (journey page, edit mode): takes a file of parsed confirmations, or one pasted GetYourGuide email (`activityEmail.ts`), matches each booking to a stay by night and name or to an activity by date, shows what it will change, and only saves what you tick.
+- **Find bookings in my Gmail**: the same screen can search your own Gmail (read-only, `gmail.readonly`) for the last months of mail from Booking.com, Airbnb and GetYourGuide (`gmail.ts`, `mailImport.ts`). Emails are read on the device and not sent anywhere; the access token lives in memory for about an hour; only the ids of emails that were not about this trip are remembered. It keeps bookings inside the trip's dates, merges several emails about one booking, and sets cancelled ones aside. It is hidden unless the build has a Google client id.
+- **Pictures**: chosen in Google Photos (the Photos picker) and saved to a folder the app makes in the owner's own Google Drive (`drive.file` scope, `drive.ts`, `DrivePhotos.tsx`). The trip stores only Drive file ids and, when Google passes it on, where each picture was taken. Nothing else of the pictures is on the server. Place photos from Wikimedia Commons (`photos.ts`) and the owner's own cover photos per place (Supabase storage, `migration-3.sql`) are separate.
+- **Recap** (owner only, after or during the trip): cover, numbers, route, automatic highlights you can hide, and each place with what was written on a day over that day's pictures (`Recap.tsx`, `recap.ts`).
+- **Play the journey**: a film of the trip (`film.ts`, `Film.tsx`): 3D satellite terrain, the route drawing itself, the camera following the road, stops with pictures and journal text, polaroids on the way, a live odometer, a scrubber, speeds, and an end card. Pictures go to the stop where they were taken when they carry a location and the nearest stop is close enough (stop 1.2 km, rough point 6 km, hike 2.5 km, road 0.4 km, night's place 0.5 km), and otherwise by the time they were taken; pictures pinned to a journal entry always win. The start screen says how many were placed which way. Length scales with the trip (about a minute for 3 days, about three and a half for 36). Satellite and elevation tiles come from public servers (Esri, Terrarium on AWS).
+- **Export**: "Export trip" saves the whole trip, private notes included, as one JSON file made on the device.
 
 ## Layout
 
 - `src/` React 19 + TypeScript, bundled with esbuild
   - `App.tsx` shell, tabs, sheets; `MapView.tsx` the map; `Edit.tsx` editors and `PlaceSearch`; `Pick.tsx` tap-to-pin map, plan dots and lines, route mini-map
   - `roads.ts`, `ferry.ts`, `autoroute.ts` routing; `backend.ts` Supabase calls and roles; `privacy.ts` the friends' version
-  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `OpenTrail.tsx`, `bookingEmail.ts`, `ImportBookings.tsx`
-- `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-4.sql` in order
+  - `Plan.tsx`, `weather.ts`, `packing.ts`, `Journal.tsx`, `OpenTrail.tsx`, `DriveGap.tsx` (one-tap legs and journal entries between entries)
+  - `bookingEmail.ts`, `activityEmail.ts`, `mailImport.ts`, `gmail.ts`, `ImportBookings.tsx` booking import and Gmail search
+  - `drive.ts`, `DrivePhotos.tsx`, `Pic.tsx` pictures; `recap.ts`, `Recap.tsx`, `film.ts`, `Film.tsx` recap and film
+  - `today.ts`, `home.ts`, `totals.ts`, `derive.ts`, `exportTrip.ts`
+- `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-4.sql` in order (`migration-3.sql` makes the photo bucket)
 - `src/config.ts` the project address and public anon key (never put the service-role key anywhere in this repo)
-- `node scripts/build.mjs` builds the site into `dist/`; pushing to `main` publishes it to GitHub Pages
+- `node scripts/build.mjs` builds the site into `dist/`; pushing to `main` publishes it to GitHub Pages. Optional build settings (environment variables): `SUPABASE_URL`, `SUPABASE_ANON_KEY` (override `src/config.ts`) and `GOOGLE_CLIENT_ID` (the public id of the Google project; without it Gmail import and Drive pictures are hidden). The Google project stays in Testing mode, with the owner's account as a test user.
 
 ## Known limits
 
 - Ferries without a charted line stay straight; trek lines between points are straight segments.
 - Routing, place names and weather depend on public services (OSRM, Overpass, Nominatim, Open-Meteo) and can be slow or unavailable; the editors fall back to straight lines and coordinates.
 - Sharing with a second real account has not yet been tested end to end.
+- Locations for pictures: it is not verified with real Google that the Photos picker and the Drive copy keep each picture's location. If the film's start screen says pictures were placed by time because they carry no location, journal entries are the way to fix a mismatch.
+- The film and its terrain have only been checked with test data and a software renderer, not on a real phone with real tiles; a looked-up picture location is kept for the session only; a film already playing does not re-place pictures when locations arrive late; hike tracks are not drawn in the film.
+- Friends cannot see the recap or the film.
 
 ## Next steps
 
 1. Create two test accounts and check friend and partner sharing end to end.
-2. Verify on a phone: the "Open in maps app" share sheet with the chosen maps app, real map tiles, weather, and the live routing services.
-3. Trip recap page for after the trip.
-4. Photos for places that have none yet; fill in the remaining trail gaps and "needs checking" flags.
+2. Verify on a phone: the "Open in maps app" share sheet with the chosen maps app, real map tiles, weather, the live routing services, and the film on real terrain.
+3. Check with real Google whether the pictures keep their location, and keep an eye on the film's speed on older phones.
+4. Fill in the remaining trail gaps and "needs checking" flags.
 5. Optional per-day "just me" journal setting for partners.
 6. Make the highlighted bed more prominent where pins overlap.
+7. Ideas: background music, saving the film as a video, remembering picture locations between sessions, moving a picture to another day.
