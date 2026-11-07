@@ -20,8 +20,10 @@ interface Item {
   stay?: boolean;
 }
 
+const VAGUE = /^(?:make plans?|look closer to date|look closer|tbd|to do|todo|plan|check)\.?$/i;
+
 /** Everything still to arrange, in date order: open to-dos, booking warnings, and nights with no place booked. */
-export function bookingItems(trip: Trip): Item[] {
+function bookingItems(trip: Trip): Item[] {
   const out: Item[] = [];
   const seen = new Set<string>();
   for (const d of trip.days) {
@@ -67,7 +69,10 @@ export function Plan({ trip, mutate, openDay, base }: { trip: Trip; mutate: Muta
 function BookSection({ trip, mutate, openDay }: { trip: Trip; mutate: Mutate; openDay: (d: string) => void }) {
   const items = useMemo(() => bookingItems(trip), [trip]);
   const [showDone, setShowDone] = useState(false);
-  const open = items.filter((i) => !i.done);
+  const all = items.filter((i) => !i.done);
+  // reminders that say nothing ("Make plans", "Look closer to date") are kept, but out of the way of the things to book
+  const vague = all.filter((i) => i.todo && VAGUE.test(i.text.trim()));
+  const open = all.filter((i) => !vague.includes(i));
   const done = items.filter((i) => i.done);
   const byDate = new Map<string, Item[]>();
   for (const i of open) byDate.set(i.date, [...(byDate.get(i.date) ?? []), i]);
@@ -104,6 +109,23 @@ function BookSection({ trip, mutate, openDay }: { trip: Trip; mutate: Mutate; op
           </ul>
         </div>
       ))}
+      {vague.length > 0 && (
+        <details className="plan-vague">
+          <summary>{vague.length} reminder{vague.length === 1 ? '' : 's'} with no detail</summary>
+          <ul className="todos">
+            {vague.map((i) => (
+              <li key={i.key} className="todo">
+                <label>
+                  <input type="checkbox" checked={!!i.done} onChange={() => toggle(i)} />
+                  <span>
+                    {shortDate(i.date)}: {i.text}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {done.length > 0 && (
         <>
           <button type="button" className="link-btn" onClick={() => setShowDone(!showDone)}>

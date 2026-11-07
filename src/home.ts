@@ -37,7 +37,7 @@ function publish(h: Home | null) {
 const valid = (h: unknown): h is Home => !!h && typeof h === 'object' && typeof (h as Home).name === 'string' && typeof (h as Home).point?.lat === 'number' && typeof (h as Home).point?.lon === 'number';
 
 /** Reads the home saved in the account (falls back to what this phone remembers when offline). */
-export async function loadHome(): Promise<void> {
+async function loadHome(): Promise<void> {
   try {
     const { data } = await sb.auth.getSession();
     const u = data.session?.user;

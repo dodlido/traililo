@@ -5,11 +5,11 @@ import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
 import { OpenTrail } from './OpenTrail.tsx';
 import { Fragment, Suspense, createContext, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
+import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Tracks, Trip } from './model.ts';
 import { RecapView } from './Recap.tsx';
 import { DriveGap } from './DriveGap.tsx';
 import { stripHome, useHome, withHome } from './home.ts';
-import type { Focus, MapEdit, Tracks } from './MapView.tsx';
+import type { Focus, MapEdit } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { exportTrip } from './exportTrip.ts';
 import { Icon, modeIcon } from './Icon.tsx';
@@ -566,6 +566,7 @@ function Journey({ go, editing, setEditing, openToday }: { go: (h: string) => vo
       </header>
 
       <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
+      {today.state === 'during' && <TodayPanel trip={trip} day={nowDay} stay={nowDay.stayId ? staysById.get(nowDay.stayId) : undefined} canWrite={owner} openSheet={openSheet} />}
 
       {owner && (
         <a className="recap-link" href={`${base}/recap`}>
@@ -1233,6 +1234,57 @@ function ImportNotes() {
 /** Today's date, as a listed day (a gap day counts as the one before it). */
 function trip_dayIs(today: Today, date: string) {
   return today.date === date;
+}
+
+/** What a day on the road needs at a glance: the weather, the next ride, tonight's bed, and a quick way to write it down. */
+function TodayPanel({ trip, day, stay, canWrite, openSheet }: { trip: Trip; day: Day; stay?: Stay; canWrite: boolean; openSheet: (s: SheetState) => void }) {
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const legs = day.entries.flatMap((e) => (e.kind === 'commute' ? e.legs : [])).filter((l) => l.startTime);
+  legs.sort((a, b) => a.startTime!.localeCompare(b.startTime!));
+  const next = legs.find((l) => l.startTime! >= hhmm);
+  const checkIn = stay?.privateNotes.find((l) => /^check-?in/i.test(l));
+  const place = (l: Leg) => [l.from, l.to].filter(Boolean).join(' to ');
+  return (
+    <section className="today-panel" aria-label="Today at a glance">
+      <DayWeather trip={trip} day={day} />
+      {next && (
+        <p>
+          <b>Next</b>
+          <span>
+            {next.startTime} {next.mode}
+            {place(next) ? `, ${place(next)}` : ''}
+          </span>
+        </p>
+      )}
+      {!next && legs.length > 0 && (
+        <p>
+          <b>Done</b>
+          <span>No more rides today.</span>
+        </p>
+      )}
+      {stay && stay.type !== 'home' && (
+        <p>
+          <b>Tonight</b>
+          <span>
+            {stay.name}
+            {stay.location ? `, ${stay.location}` : ''}
+            {checkIn ? ` · ${checkIn}` : ''}
+          </span>
+        </p>
+      )}
+      {canWrite && (
+        <div className="today-actions">
+          <button type="button" className="chip solid" onClick={() => openSheet({ type: 'journal', date: day.date })}>
+            <Icon name="edit" size={16} /> Write today’s journal
+          </button>
+          <button type="button" className="chip" onClick={() => openSheet({ type: 'entry', date: day.date, kind: 'journal' })}>
+            <Icon name="plus" size={16} /> Add a moment
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function TodayCard({ today, start, where, onOpen }: { today: Today; start: string; where: string; onOpen: () => void }) {

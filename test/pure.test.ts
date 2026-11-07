@@ -76,3 +76,13 @@ test('simplify keeps the ends of a line and drops points on a straight stretch; 
   assert.match(g, /x &amp; y/);
   assert.equal((g.match(/<trkpt /g) ?? []).length, 50);
 });
+
+test('kmBetween: known distances, points and [lon, lat] pairs alike', async () => {
+  const { kmBetween } = await import('../src/geo.ts');
+  // Buenos Aires to Ushuaia is about 2,390 km in a straight line
+  const d = kmBetween({ lat: -34.6, lon: -58.4 }, [-68.3, -54.8]);
+  assert.ok(d > 2300 && d < 2480, String(d));
+  assert.equal(kmBetween([10, 10], { lat: 10, lon: 10 }), 0);
+  // across the date line the short way round
+  assert.ok(kmBetween([179.9, 0], [-179.9, 0]) < 30);
+});

@@ -6,6 +6,7 @@ import { Pic } from './Pic.tsx';
 import { Icon } from './Icon.tsx';
 import { Actions, Field, Sheet, useSave } from './Edit.tsx';
 import { deletePhoto, photoUrlOf } from './backend.ts';
+import { shortDate, weekday } from './derive.ts';
 
 export function JournalBlock({ day, canWrite, onWrite }: { day: Day; canWrite: boolean; onWrite: () => void }) {
   const j = day.journal;
@@ -56,7 +57,7 @@ export function JournalEditor({ trip, mutate, date, onClose }: { trip: Trip; mut
     });
   };
   return (
-    <Sheet title={`Journal · ${date}`} onClose={onClose}>
+    <Sheet title={`Journal · ${weekday(date)} ${shortDate(date)}`} onClose={onClose}>
       <Field label="What happened" hint="Only you see this unless you switch on sharing below.">
         <textarea className="journal-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="The wind, the food, who we met…" />
       </Field>

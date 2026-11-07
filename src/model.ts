@@ -281,3 +281,6 @@ export interface ImportReport {
   year: number;
   notes: ImportNote[];
 }
+
+/** Hike trails drawn on the map, by the id of the hike they belong to. */
+export type Tracks = Record<string, { lines: number[][][]; km: number; name: string }>;

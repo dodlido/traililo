@@ -2,6 +2,7 @@
 // road (or a ferry line, or a flight), a stop (a meal, a hike, a visit), a night, or a title. Pictures are matched to the
 // scene they were taken in by the time on them, and each day's journal is laid over the last scene of the day.
 // Everything here is pure: the player (Film.tsx) only asks "what is happening at time t".
+import { kmBetween } from './geo.ts';
 import type { CommuteEntry, Day, DrivePhoto, Entry, HikeEntry, Leg, Point, Stay, Trip } from './model.ts';
 import { hikeDistance } from './derive.ts';
 import { catOfEntry, CATS, type Cat } from './mapkit.ts';
@@ -103,12 +104,7 @@ export interface Film {
 // ------------------------------------------------------------------ geometry
 
 const R = Math.PI / 180;
-export function kmBetween(a: Point | LngLat, b: Point | LngLat): number {
-  const [alon, alat] = Array.isArray(a) ? a : [a.lon, a.lat];
-  const [blon, blat] = Array.isArray(b) ? b : [b.lon, b.lat];
-  const h = Math.sin(((blat - alat) * R) / 2) ** 2 + Math.cos(alat * R) * Math.cos(blat * R) * Math.sin(((blon - alon) * R) / 2) ** 2;
-  return 12742 * Math.asin(Math.min(1, Math.sqrt(h)));
-}
+export { kmBetween };
 /** Compass bearing from a to b, 0 to 360. */
 export function bearing(a: LngLat, b: LngLat): number {
   const dx = (b[0] - a[0]) * Math.cos(((a[1] + b[1]) / 2) * R);

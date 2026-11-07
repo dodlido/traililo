@@ -810,3 +810,16 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .round.small::after, .back-home::after { content: ''; position: absolute; inset: -6px; }
 .back-home { display: inline-flex; align-items: center; min-height: 44px; }
 .todo { min-height: 44px; }
+
+.plan-vague { margin: 18px 0 8px; color: var(--fog); font-size: 14px; }
+.plan-vague summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.plan-vague .todos { margin-top: 6px; }
+.plan-date { min-height: 44px; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 5px; }
+
+/* ---------- today at a glance ---------- */
+.today-panel { margin: 10px 16px 0; padding: 12px 16px; display: grid; gap: 8px; background: var(--card); border: 1px solid var(--rule); border-radius: 18px; }
+.today-panel p { margin: 0; display: flex; gap: 12px; align-items: baseline; font-size: 15px; }
+.today-panel p > b { flex: none; width: 54px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); }
+.today-panel p > span { min-width: 0; overflow-wrap: anywhere; }
+.today-panel .wx-chip { margin: 0; }
+.today-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }

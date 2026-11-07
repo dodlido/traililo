@@ -7,7 +7,7 @@ import type { CommuteEntry, Day, Entry, Leg, Point, Stay, TransportMode, Trip } 
 import { Icon, modeIcon } from './Icon.tsx';
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
-import type { Tracks } from './MapView.tsx';
+import type { Tracks } from './model.ts';
 import type { SheetState } from './Edit.tsx';
 
 interface End {

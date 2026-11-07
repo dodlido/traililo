@@ -3,7 +3,7 @@
 //  - trip_private: the full version with bookings and to-dos, readable by the owner only (after 2FA)
 import { createClient, type Session } from '@supabase/supabase-js';
 import type { ImportReport, StayType, Trip } from './model.ts';
-import type { Tracks } from './MapView.tsx';
+import type { Tracks } from './model.ts';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.ts';
 import { SCHEMA, migrate } from './migrate.ts';
 

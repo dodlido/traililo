@@ -1,5 +1,6 @@
 // The trip recap, worked out from what is already in the trip: no starring and no choosing. It only looks at days up to
 // today, so the same code gives "so far" during the trip and the full story afterwards.
+import { kmBetween } from './geo.ts';
 import type { CommuteEntry, Day, DrivePhoto, HikeEntry, Point, Trip } from './model.ts';
 import { countryName, hikingFor, minutes, regionRuns, shortDate, type RegionRun } from './derive.ts';
 import { todayDate } from './today.ts';
@@ -60,11 +61,7 @@ export interface Recap {
 const dayNo = (iso: string) => Math.floor(Date.parse(iso + 'T00:00:00Z') / 86400000);
 const words = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
-function km(a: Point, b: Point): number {
-  const r = Math.PI / 180;
-  const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lon - a.lon) * r) / 2) ** 2;
-  return 12742 * Math.asin(Math.min(1, Math.sqrt(h)));
-}
+const km = kmBetween;
 
 /** The first sentence or two of what was written, short enough to sit over a picture. */
 export function snippetOf(text: string, max = 170): string {

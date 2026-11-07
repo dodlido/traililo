@@ -13,7 +13,7 @@ const mapWait = <p className="auth-note">Loading the map…</p>;
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
-import type { Tracks } from './MapView.tsx';
+import type { Tracks } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { saveHome, useHome } from './home.ts';
 import { legTimes, minutes, timeSpan } from './derive.ts';

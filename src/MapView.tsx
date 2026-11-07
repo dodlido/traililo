@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import workerSource from 'worker-text';
 import type { Feature, FeatureCollection, LineString, MultiLineString, Point as GeoPoint } from 'geojson';
-import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
+import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Tracks, Trip } from './model.ts';
 import { CATS, catOfEntry, glyphSvg, stayCat, type Cat } from './mapkit.ts';
 import { addEmblems } from './emblems.ts';
 import { legTimes, minutes, timeSpan } from './derive.ts';
 
-export type Tracks = Record<string, { lines: number[][][]; km: number; name: string }>;
+export type { Tracks };
 export interface Focus { id: string; n: number }
 
 function factsOf(e: Entry): string {
