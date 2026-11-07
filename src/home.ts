@@ -42,12 +42,17 @@ export async function loadHome(): Promise<void> {
     const { data } = await sb.auth.getSession();
     const u = data.session?.user;
     if (!u) return;
-    const meta = u.user_metadata?.home as unknown;
+    // The home lives in its own table, which needs the two-step code (migration-6.sql). Until that migration has been run,
+    // the old copy in the account's metadata is read instead.
+    const row = await sb.from('user_home').select('home').eq('user_id', u.id).maybeSingle();
+    let found: unknown;
+    if (row.error) found = u.user_metadata?.home;
+    else found = row.data?.home;
     if (uidNow !== u.id) {
       // another account signed in on this phone: nothing carries over
       uidNow = u.id;
-      publish(valid(meta) ? meta : null);
-    } else if (valid(meta)) publish(meta);
+      publish(valid(found) ? found : null);
+    } else if (valid(found)) publish(found);
   } catch {
     /* offline: keep what is remembered */
   }
@@ -57,7 +62,12 @@ export async function loadHome(): Promise<void> {
 export async function saveHome(h: Home | null): Promise<string | undefined> {
   publish(h);
   try {
-    const { error } = await sb.auth.updateUser({ data: { home: h } });
+    const { data } = await sb.auth.getSession();
+    const uid = data.session?.user.id;
+    if (!uid) return 'Saved on this phone only: you are not signed in.';
+    const { error } = h
+      ? await sb.from('user_home').upsert({ user_id: uid, home: h, updated_at: new Date().toISOString() })
+      : await sb.from('user_home').delete().eq('user_id', uid);
     if (error) return `Saved on this phone only: ${error.message}`;
   } catch {
     return 'Saved on this phone only. It will not follow you to other devices until you are online.';

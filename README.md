@@ -47,7 +47,7 @@ will be done with purpose-made shareables (the recap and film are the first cand
   - `bookingEmail.ts`, `activityEmail.ts`, `mailImport.ts`, `gmail.ts`, `ImportBookings.tsx` booking import and Gmail search
   - `drive.ts`, `DrivePhotos.tsx`, `Pic.tsx` pictures; `recap.ts`, `Recap.tsx`, `film.ts`, `Film.tsx` recap and film
   - `today.ts`, `home.ts`, `totals.ts`, `derive.ts`, `exportTrip.ts`
-- `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-5.sql` in order (`migration-3.sql` makes the photo bucket; `migration-5.sql` removes the friends' view)
+- `supabase/schema.sql` tables, privacy rules and functions; run once in the SQL editor, then `migration-2.sql` to `migration-6.sql` in order (`migration-3.sql` makes the photo bucket; `migration-5.sql` removes the friends' view; `migration-6.sql` moves Home out of the account metadata into its own table, and tightens `share_trip` and picture reads)
 - `src/config.ts` the project address and public anon key (never put the service-role key anywhere in this repo)
 - `node scripts/build.mjs` builds the site into `dist/`; pushing to `main` publishes it to GitHub Pages. Optional build settings (environment variables): `SUPABASE_URL`, `SUPABASE_ANON_KEY` (override `src/config.ts`) and `GOOGLE_CLIENT_ID` (the public id of the Google project; without it Gmail import and Drive pictures are hidden). The Google project stays in Testing mode, with the owner's account as a test user.
 
@@ -62,6 +62,7 @@ will be done with purpose-made shareables (the recap and film are the first cand
 
 ## Next steps
 
+1. In Supabase, turn off new sign-ups (Authentication, Sign In / Providers, switch off "Allow new users to sign up"). The app only signs in; accounts, including a travel partner's, are created by you under Authentication, Users.
 1. Create two test accounts and check travel-partner sharing end to end.
 2. Verify on a phone: the "Open in maps app" share sheet with the chosen maps app, real map tiles, weather, the live routing services, and the film on real terrain.
 3. Check with real Google whether the pictures keep their location, and keep an eye on the film's speed on older phones.
