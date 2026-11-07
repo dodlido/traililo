@@ -23,7 +23,7 @@ const MODES: { mode: TransportMode; label: string }[] = [
   { mode: 'flight', label: 'Flight' },
 ];
 const short = (s: string) => s.split(/[,·:]| - /)[0].trim() || s;
-const flat = (a: Point, b: Point) => Math.hypot((b.lon - a.lon) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180)), (b.lat - a.lat) * 110.57);
+const flat = (a: Point, b: Point) => Math.hypot(((((b.lon - a.lon) % 360) + 540) % 360 - 180) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180)), (b.lat - a.lat) * 110.57);
 
 /** Where an entry finishes: the end of its trail, the end of its last leg, or the place it happens. */
 function endOf(e: Entry, tracks: Tracks): End {

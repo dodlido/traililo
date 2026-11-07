@@ -38,6 +38,7 @@ export function bookingItems(trip: Trip): Item[] {
     }
   }
   for (const s of trip.stays) {
+    if (s.type === 'home') continue; // your own bed needs no booking
     if (s.assumed || s.nameIsPlaceholder || (!s.booking && s.type !== 'camp')) {
       out.push({ key: `stay-${s.id}`, date: s.checkIn, text: `Book somewhere to sleep: ${s.name}${s.location ? `, ${s.location}` : ''} (${s.nights} night${s.nights === 1 ? '' : 's'})`, stay: true, warn: true });
     }

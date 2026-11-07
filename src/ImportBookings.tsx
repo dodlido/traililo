@@ -117,8 +117,10 @@ export function ImportBookings({ trip, mutate, onClose }: { trip: Trip; mutate: 
       return setActs(actRows([a]));
     }
     if (j.traililo !== 'bookings' || (!Array.isArray(j.bookings) && !Array.isArray(j.activities))) return setMsg('That does not look like a bookings file.');
-    const ok = (j.bookings ?? []).filter((b) => b && typeof b.name === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.checkIn ?? ''));
-    const okActs = (j.activities ?? []).filter((a) => a && typeof a.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.date ?? '')).map((a) => ({ ...a, warnings: Array.isArray(a.warnings) ? a.warnings : [] }));
+    // a date that looks right but is not a day (2027-13-45) would throw "Invalid time value" when drawn, so it is dropped here
+    const real = (d?: string) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? '') && Number.isFinite(Date.parse(d + 'T00:00:00Z')) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d;
+    const ok = (j.bookings ?? []).filter((b) => b && typeof b.name === 'string' && real(b.checkIn) && (b.checkOut === undefined || real(b.checkOut)));
+    const okActs = (j.activities ?? []).filter((a) => a && typeof a.title === 'string' && real(a.date)).map((a) => ({ ...a, warnings: Array.isArray(a.warnings) ? a.warnings : [] }));
     if (!ok.length && !okActs.length) return setMsg('That file has no bookings in it.');
     setActs(actRows(okActs));
     setRows(stayRows(ok));

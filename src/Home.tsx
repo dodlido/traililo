@@ -158,9 +158,13 @@ function NewTrip() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !start || !end) return setErr('Fill in a name and both dates.');
+    const a = Date.parse(start + 'T00:00:00Z');
+    const z = Date.parse(end + 'T00:00:00Z');
+    if (!Number.isFinite(a) || !Number.isFinite(z) || !/^\d{4}-/.test(start) || !/^\d{4}-/.test(end) || +start.slice(0, 4) < 2000 || +end.slice(0, 4) > 2100) return setErr('Check the dates: the year looks wrong.');
     if (end < start) return setErr('The end date is before the start.');
+    if ((z - a) / 86400000 >= 366) return setErr('A trip can be up to a year long. Make the end date earlier, or split it into two trips.');
     const dates: string[] = [];
-    for (let d = new Date(start + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= end && dates.length < 150; d.setUTCDate(d.getUTCDate() + 1)) dates.push(d.toISOString().slice(0, 10));
+    for (let d = new Date(a); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) dates.push(d.toISOString().slice(0, 10));
     const days: Day[] = dates.map((date) => ({ date, region: title.trim(), entries: [], todos: [] }));
     const trip = { id: crypto.randomUUID(), title: title.trim(), startDate: start, endDate: end, days, stays: [] } as unknown as Trip;
     setBusy(true);

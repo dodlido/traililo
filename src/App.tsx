@@ -409,7 +409,7 @@ function Journey({ go, editing, setEditing, openToday }: { go: (h: string) => vo
           )}
           {exported && <p className="small" role="status">{exported}</p>}
           <p className="cover-sub">
-            {t.days} days · {countries.join(' and ')}
+            {t.days} {t.days === 1 ? 'day' : 'days'} · {countries.join(' and ')}
           </p>
         </div>
       </header>

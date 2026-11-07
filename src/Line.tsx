@@ -13,7 +13,7 @@ export const LINE_MODES: { id: RouteLine['mode']; label: string; icon: string }[
 ];
 const km = (pts: { lat: number; lon: number }[]) => {
   let n = 0;
-  for (let i = 1; i < pts.length; i++) n += Math.hypot((pts[i].lon - pts[i - 1].lon) * 111.32 * Math.cos(((pts[i].lat + pts[i - 1].lat) / 2) * Math.PI / 180), (pts[i].lat - pts[i - 1].lat) * 110.57);
+  for (let i = 1; i < pts.length; i++) n += Math.hypot(((((pts[i].lon - pts[i - 1].lon) % 360) + 540) % 360 - 180) * 111.32 * Math.cos(((pts[i].lat + pts[i - 1].lat) / 2) * Math.PI / 180), (pts[i].lat - pts[i - 1].lat) * 110.57);
   return Math.round(n * 10) / 10;
 };
 

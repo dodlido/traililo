@@ -259,7 +259,7 @@ const goodUrl = (u: string, host: RegExp) => {
     return false;
   }
 };
-const flat = (a: Point, b: Point) => Math.hypot((b.lon - a.lon) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180), (b.lat - a.lat) * 110.57);
+const flat = (a: Point, b: Point) => Math.hypot(((((b.lon - a.lon) % 360) + 540) % 360 - 180) * 111.32 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180), (b.lat - a.lat) * 110.57);
 
 export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onClose }: { trip: Trip; mutate: Mutate; setTrack: SetTrack; date: string; id?: string; kind?: Entry['kind']; start?: Start; onClose: () => void }) {
   const existing = useMemo(() => (id ? trip.days.find((d) => d.date === date)?.entries.find((e) => e.id === id) : undefined), [trip, date, id]);
@@ -299,7 +299,8 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
   const dur = h.durationMin;
   const setDur = (hh: string, mm: string) => {
     const total = (num(hh) ?? 0) * 60 + (num(mm) ?? 0);
-    up({ durationMin: hh === '' && mm === '' ? undefined : total });
+    // an emptied hours box with no minutes left means "not set", not "0 minutes"; never negative
+    up({ durationMin: (hh.trim() === '' && (mm.trim() === '' || total <= 0)) || total <= 0 ? undefined : Math.round(total) });
   };
   const isNew = !existing;
   const dayEntries = trip.days.find((dd) => dd.date === date)?.entries ?? [];
@@ -512,7 +513,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
   const mealWhenF = (
         <div className="two">
           <Field label="Time"><input type="time" value={m.time ?? ''} onChange={(e) => up({ time: e.target.value || undefined })} /></Field>
-          <Field label="People"><input type="number" min={1} inputMode="numeric" value={m.partySize ?? ''} onChange={(e) => up({ partySize: num(e.target.value) })} /></Field>
+          <Field label="People"><input type="number" min={1} inputMode="numeric" value={m.partySize ?? ''} onChange={(e) => { const n = num(e.target.value); up({ partySize: n !== undefined && n >= 1 ? Math.round(n) : undefined }); }} /></Field>
         </div>
   );
   const whereF = (
@@ -785,6 +786,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const [notes, setNotes] = useState(base.notes.join('\n'));
   const [priv, setPriv] = useState(base.privateNotes.join('\n'));
   const [err, setErr] = useState<string | null>(null);
+  const [clash, setClash] = useState('');
   const { busy, error, run } = useSave(mutate, onClose);
   const up = (p: Partial<Stay>) => setS((q) => ({ ...q, ...p }));
   const [mail, setMail] = useState('');
@@ -839,9 +841,24 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const save = () => {
     if (!isHome && !s.name.trim()) return setErr('Give the place a name.');
     setErr(null);
-    const nights = Math.max(1, Math.round(s.nights || 1));
+    // nights: a whole number from 1 up to the last day of the trip (the stay may end the morning after it)
+    const first = trip.days.findIndex((d) => d.date === s.checkIn);
+    const most = Math.max(1, trip.days.length - Math.max(0, first) + 1);
+    const nights = Math.min(most, Math.max(1, Math.round(Number.isFinite(s.nights) ? s.nights : 1)));
+    let checkOut: string;
+    try {
+      checkOut = addDays(s.checkIn, nights);
+    } catch {
+      return setErr('That date does not work. Pick the first night again.');
+    }
+    // another place already holds one of these nights: say so once, and save on the second press
+    const taken = trip.stays.find((q) => q.id !== existing?.id && q.checkIn < checkOut && q.checkOut > s.checkIn);
+    if (taken && clash !== `${s.checkIn}|${nights}|${taken.id}`) {
+      setClash(`${s.checkIn}|${nights}|${taken.id}`);
+      return setErr(`“${taken.name}” already covers ${taken.checkIn} to ${taken.checkOut}. Press Save again to keep both, or change the dates.`);
+    }
     // home is only ever "Home": where it is comes from the account, so no position, address or booking is kept with the trip
-    const out: Stay = { ...s, name: isHome ? 'Home' : s.name.trim(), ...(isHome ? { point: undefined, location: undefined, booking: undefined, assumed: undefined } : {}), nights, checkOut: addDays(s.checkIn, nights), notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined };
+    const out: Stay = { ...s, name: isHome ? 'Home' : s.name.trim(), ...(isHome ? { point: undefined, location: undefined, booking: undefined, assumed: undefined } : {}), nights, checkOut, notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined };
     run((t) => {
       t.stays = existing ? t.stays.map((q) => (q.id === out.id ? out : q)) : [...t.stays, out];
       for (const dd of t.days) if (dd.stayId === out.id) delete dd.stayId;
