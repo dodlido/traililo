@@ -102,3 +102,18 @@ test('packing: no duplicates, sectioned, and tailored to car vs bus and tent vs 
   assert.ok(tent.some((t) => /tent/i.test(t)));
   assert.ok(!hut.some((t) => /^Tent/i.test(t)));
 });
+
+test('dayLoad: easy, busy and long days, with the reason in words', async () => {
+  const { dayLoad } = await import('../src/derive.ts');
+  const hike = (km: number, gain = 0, min?: number) => ({ id: 'h', kind: 'hike', title: 'H', notes: [], warnings: [], distanceKm: km, elevationGainM: gain, durationMin: min });
+  const d = (entries: unknown[]) => ({ date: '2027-03-01', region: 'r', entries, todos: [] }) as unknown as import('../src/model.ts').Day;
+  assert.equal(dayLoad(d([hike(5)])).level, 'easy');
+  assert.equal(dayLoad(d([hike(13)])).level, 'busy');
+  const long = dayLoad(d([hike(21, 1100)]));
+  assert.equal(long.level, 'long');
+  assert.deepEqual(long.why, ['21 km on foot', '1100 m of climbing']);
+  // a ten-hour bus ride is a long day too
+  assert.equal(dayLoad(d([{ id: 'c', kind: 'commute', title: 'Bus', notes: [], warnings: [], legs: [{ mode: 'bus', durationMin: 620 }] }])).level, 'long');
+  // optional hikes do not count
+  assert.equal(dayLoad(d([{ ...hike(25), optional: true }])).level, 'easy');
+});

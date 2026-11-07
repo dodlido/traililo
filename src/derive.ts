@@ -19,6 +19,41 @@ export function hikeDistance(h: HikeEntry): { km?: number; approx: boolean } {
   return o !== undefined ? { km: o, approx: true } : { approx: false };
 }
 
+export interface DayLoad {
+  km: number;
+  gain: number;
+  /** Time on foot plus time in vehicles, in minutes. */
+  minutes: number;
+  level: 'easy' | 'busy' | 'long';
+  /** Plain words for what makes it heavy, e.g. "21 km on foot". */
+  why: string[];
+}
+
+/** How demanding a day is: the planned hikes and the rides, taken together. */
+export function dayLoad(day: Day): DayLoad {
+  let km = 0;
+  let gain = 0;
+  let foot = 0;
+  let ride = 0;
+  for (const e of day.entries) {
+    if (e.kind === 'hike' && !e.optional) {
+      const k = hikeDistance(e).km ?? 0;
+      km += k;
+      gain += e.elevationGainM ?? 0;
+      foot += e.durationMin ?? Math.round(k * 18); // no time given: a steady walking pace plus stops
+    } else if (e.kind === 'commute') for (const l of e.legs) ride += l.durationMin ?? 0;
+  }
+  const minutes = foot + ride;
+  const long = km >= 18 || gain >= 1000 || minutes >= 600;
+  const busy = km >= 12 || gain >= 600 || minutes >= 420;
+  const why: string[] = [];
+  if (km >= 12) why.push(`${Math.round(km)} km on foot`);
+  if (gain >= 600) why.push(`${Math.round(gain)} m of climbing`);
+  if (ride >= 300) why.push(`${Math.round(ride / 60)} hours of travel`);
+  if (!why.length && (long || busy)) why.push(`${Math.round(minutes / 60)} hours of activity`);
+  return { km, gain, minutes, level: long ? 'long' : busy ? 'busy' : 'easy', why };
+}
+
 export function hikingFor(day: Day): DayHiking {
   let km = 0;
   let optionalKm = 0;

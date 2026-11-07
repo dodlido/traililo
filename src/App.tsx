@@ -34,7 +34,7 @@ import { SCHEMA } from './migrate.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
-import { countryName, dayOfMonth, legTimes, minutes, timeSpan, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
+import { countryName, dayLoad, dayOfMonth, legTimes, minutes, timeSpan, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
 import { isCamp } from './mapkit.ts';
 
 interface TripData {
@@ -810,6 +810,13 @@ function DayCard({ day, active }: { day: Day; active: boolean }) {
   const todos = day.todos.filter((td) => !shownWarnings.has(td.text));
   const dayLines = (trip.lines ?? []).filter((l) => l.date === day.date);
   const nothing = day.entries.length === 0 && todos.length === 0 && dayLines.length === 0;
+  const load = dayLoad(day);
+  // how many days up to and including this one in a row were busy or long
+  let hardRun = 0;
+  if (load.level !== 'easy') {
+    const at = trip.days.findIndex((d) => d.date === day.date);
+    for (let i = at; i >= 0 && dayLoad(trip.days[i]).level !== 'easy'; i--) hardRun++;
+  }
   return (
     <li className={`day${active ? ' is-active' : ''}${isToday ? ' is-today' : ''}`} id={`day-${day.date}`}>
       <div className="day-head">
@@ -827,6 +834,11 @@ function DayCard({ day, active }: { day: Day; active: boolean }) {
       </div>
       <div className="day-body">
         <DayWeather trip={trip} day={day} />
+        {load.level !== 'easy' && (
+          <p className={`load-note ${load.level}`}>
+            <b>{load.level === 'long' ? 'Long day' : 'Busy day'}</b> {load.why.join(', ')}.{hardRun >= 3 ? ` The ${hardRun === 3 ? 'third' : `${hardRun}th`} hard day in a row: think about resting after it.` : ''}
+          </p>
+        )}
         {canEdit && <DriveGap day={day} index={-1} stay={stay} prevStay={prevStay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
         {day.entries.map((e, i) => (
           <Fragment key={e.id}>
