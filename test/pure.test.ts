@@ -117,3 +117,18 @@ test('dayLoad: easy, busy and long days, with the reason in words', async () => 
   // optional hikes do not count
   assert.equal(dayLoad(d([{ ...hike(25), optional: true }])).level, 'easy');
 });
+
+test('stayCosts adds each currency on its own, skips home, and counts unpriced places', async () => {
+  const { stayCosts, money } = await import('../src/derive.ts');
+  const t = trip(['2027-03-01', '2027-03-04'], [
+    stay({ id: 'a', name: 'A', checkIn: '2027-03-01', checkOut: '2027-03-02', price: { amount: 100, currency: 'USD' } }),
+    stay({ id: 'b', name: 'B', checkIn: '2027-03-02', checkOut: '2027-03-03', price: { amount: 50.5, currency: 'USD' } }),
+    stay({ id: 'c', name: 'C', checkIn: '2027-03-03', checkOut: '2027-03-04', price: { amount: 80000, currency: 'ARS' } }),
+    stay({ id: 'd', name: 'D', checkIn: '2027-03-04', checkOut: '2027-03-05' }),
+    stay({ id: 'h', name: 'Home', type: 'home', checkIn: '2027-03-05', checkOut: '2027-03-06' }),
+  ]);
+  const c = stayCosts(t);
+  assert.deepEqual(c.totals.map((x) => [x.currency, x.amount]), [['ARS', 80000], ['USD', 150.5]]);
+  assert.equal(c.unpriced, 1);
+  assert.equal(money(1240, 'USD'), 'USD 1,240');
+});

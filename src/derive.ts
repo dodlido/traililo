@@ -162,3 +162,24 @@ export const countryName = new Proxy({} as Record<string, string>, {
     }
   },
 });
+
+/** "USD 1,240" (no currency symbols: the code is clearer to everyone). */
+export const money = (amount: number, currency: string) => `${currency} ${amount.toLocaleString('en', { maximumFractionDigits: 2 })}`;
+
+/** What the booked places cost, per currency, and how many places have no price yet. Home is free. */
+export function stayCosts(trip: Trip): { totals: { currency: string; amount: number; stays: number }[]; unpriced: number } {
+  const by = new Map<string, { amount: number; stays: number }>();
+  let unpriced = 0;
+  for (const s of trip.stays) {
+    if (s.type === 'home') continue;
+    if (!s.price) {
+      unpriced++;
+      continue;
+    }
+    const t = by.get(s.price.currency) ?? { amount: 0, stays: 0 };
+    t.amount += s.price.amount;
+    t.stays++;
+    by.set(s.price.currency, t);
+  }
+  return { totals: [...by].map(([currency, v]) => ({ currency, ...v })).sort((a, b) => b.amount - a.amount), unpriced };
+}

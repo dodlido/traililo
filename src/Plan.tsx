@@ -1,7 +1,7 @@
 // The owner's planning page: what still has to be booked, the weather for each place, and what to pack.
 import { useEffect, useMemo, useState } from 'react';
 import type { Trip } from './model.ts';
-import { regionRuns, shortDate, weekday } from './derive.ts';
+import { money, regionRuns, shortDate, stayCosts, weekday } from './derive.ts';
 import { Icon } from './Icon.tsx';
 import { todayDate } from './today.ts';
 import { adviceFor, placePoint, weatherFor, type WeatherByDate } from './weather.ts';
@@ -56,6 +56,7 @@ export function Plan({ trip, mutate, openDay, base }: { trip: Trip; mutate: Muta
         <p className="page-sub">Only you see this page.</p>
       </header>
       <BookSection trip={trip} mutate={mutate} openDay={openDay} />
+      <CostSection trip={trip} />
       <RoadSection trip={trip} mutate={mutate} />
       <WeatherSection trip={trip} />
       <PackSection trip={trip} mutate={mutate} />
@@ -319,6 +320,31 @@ function RoadSection({ trip, mutate }: { trip: Trip; mutate: Mutate }) {
       )}
       {jobs.length > 0 && msg && <p className="plan-note">{msg}</p>}
       {failed.length > 0 && <p className="plan-note">Nothing found for: {failed.join('; ')}. They stay as straight lines.</p>}
+    </section>
+  );
+}
+
+/** What the places to sleep cost so far, per currency. Rates change, so currencies are never added together. */
+function CostSection({ trip }: { trip: Trip }) {
+  const { totals, unpriced } = useMemo(() => stayCosts(trip), [trip]);
+  return (
+    <section className="plan-block" aria-labelledby="plan-cost">
+      <h2 id="plan-cost">What it costs</h2>
+      {totals.length === 0 ? (
+        <p className="plan-note">Add a price when you edit a place to sleep, and the total shows here.</p>
+      ) : (
+        <>
+          <ul className="cost-list">
+            {totals.map((t) => (
+              <li key={t.currency}>
+                <b>{money(t.amount, t.currency)}</b>
+                <span>{t.stays} place{t.stays === 1 ? '' : 's'} to sleep</span>
+              </li>
+            ))}
+          </ul>
+          <p className="plan-note">{unpriced > 0 ? `${unpriced} place${unpriced === 1 ? ' has' : 's have'} no price yet. ` : ''}Each currency is counted on its own.</p>
+        </>
+      )}
     </section>
   );
 }

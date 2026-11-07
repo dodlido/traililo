@@ -784,6 +784,10 @@ export function HomeSetting() {
   );
 }
 
+const CURRENCIES = ['USD', 'EUR', 'ARS', 'CLP', 'GBP', 'ILS', 'BRL', 'UYU'];
+/** The currency used last on this trip, so the next price starts with it. */
+const lastCurrency = (trip: Trip) => [...trip.stays].reverse().find((s) => s.price)?.price?.currency ?? 'USD';
+
 export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: Trip; mutate: Mutate; id?: string; date?: string; start?: Start; onClose: () => void }) {
   const existing = id ? trip.stays.find((s) => s.id === id) : undefined;
   const base = useMemo<Stay>(
@@ -797,6 +801,8 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
   const [s, setS] = useState<Stay>(base);
   const [notes, setNotes] = useState(base.notes.join('\n'));
   const [priv, setPriv] = useState(base.privateNotes.join('\n'));
+  const [priceText, setPriceText] = useState(base.price ? String(base.price.amount) : '');
+  const [cur, setCur] = useState(base.price?.currency ?? lastCurrency(trip));
   const [err, setErr] = useState<string | null>(null);
   const [clash, setClash] = useState('');
   const { busy, error, run } = useSave(mutate, onClose);
@@ -869,8 +875,13 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
       setClash(`${s.checkIn}|${nights}|${taken.id}`);
       return setErr(`“${taken.name}” already covers ${taken.checkIn} to ${taken.checkOut}. Press Save again to keep both, or change the dates.`);
     }
+    // a price is optional; when given it must be a number, and a currency code
+    const amount = priceText.trim() === '' ? undefined : Number(priceText.replace(',', '.'));
+    if (amount !== undefined && (!Number.isFinite(amount) || amount < 0)) return setErr('The price must be a number, or left empty.');
+    const code = cur.trim().toUpperCase();
+    if (amount !== undefined && !/^[A-Z]{3}$/.test(code)) return setErr('Write the currency as three letters, such as USD or EUR.');
     // home is only ever "Home": where it is comes from the account, so no position, address or booking is kept with the trip
-    const out: Stay = { ...s, name: isHome ? 'Home' : s.name.trim(), ...(isHome ? { point: undefined, location: undefined, booking: undefined, assumed: undefined } : {}), nights, checkOut, notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined };
+    const out: Stay = { ...s, name: isHome ? 'Home' : s.name.trim(), ...(isHome ? { point: undefined, location: undefined, booking: undefined, assumed: undefined } : {}), nights, checkOut, notes: lines(notes), privateNotes: lines(priv), nameIsPlaceholder: undefined, price: isHome || amount === undefined ? undefined : { amount, currency: code } };
     run((t) => {
       t.stays = existing ? t.stays.map((q) => (q.id === out.id ? out : q)) : [...t.stays, out];
       for (const dd of t.days) if (dd.stayId === out.id) delete dd.stayId;
@@ -927,6 +938,12 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
         </Field>
       </div>}
       <Field label="Notes" hint="One per line."><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      {!isHome && (
+        <div className="two">
+          <Field label="Price for all nights" hint="Optional. Only you see it."><input inputMode="decimal" value={priceText} onChange={(ev) => setPriceText(ev.target.value)} /></Field>
+          <Field label="Currency"><input list="currency-codes" maxLength={3} autoCapitalize="characters" value={cur} onChange={(ev) => setCur(ev.target.value.toUpperCase())} /><datalist id="currency-codes">{CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist></Field>
+        </div>
+      )}
       {!isHome && <Field label="Private (address, phone, door code)" hint="Only you see these."><textarea rows={3} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>}
       {!isHome && <Field label="Where on the map"><PlaceSearch always current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>}
       <Actions onSave={save} busy={busy} error={err ?? error} onDelete={existing ? remove : undefined} />

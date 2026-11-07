@@ -28,6 +28,12 @@ export interface BookingInfo {
   confirmationCode?: string; // to be filled in later
 }
 
+export interface Price {
+  amount: number;
+  /** Three-letter code such as USD, EUR, ARS, CLP. */
+  currency: string;
+}
+
 export type TransportMode = 'flight' | 'bus' | 'drive' | 'ferry' | 'taxi';
 
 export interface Leg {
@@ -139,6 +145,8 @@ export interface Stay {
   checkOut: string; // the morning after the last listed night
   nights: number;
   booking?: BookingInfo;
+  /** What all the nights cost, in the currency it was paid in. Private: only the owner and partners see the trip's bookings. */
+  price?: Price;
   notes: string[];
   /** Address and similar details: phone, PIN, confirmation number. */
   privateNotes: string[];

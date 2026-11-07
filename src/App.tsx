@@ -34,7 +34,7 @@ import { SCHEMA } from './migrate.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
-import { countryName, dayLoad, dayOfMonth, legTimes, minutes, timeSpan, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
+import { countryName, dayLoad, dayOfMonth, money, legTimes, minutes, timeSpan, monthShort, nightOf, regionRuns, shortDate, stayById, weekday } from './derive.ts';
 import { isCamp } from './mapkit.ts';
 
 interface TripData {
@@ -772,6 +772,7 @@ function Stays(_: { go: (h: string) => void }) {
                 </p>
                 {(s.assumed || s.nameIsPlaceholder || (!s.booking && s.type !== 'camp' && s.type !== 'home')) && <span className="tag warn">not booked yet</span>}
                 {s.booking?.bookedBy && <span className="tag soft">booked by {s.booking.bookedBy}</span>}
+                {s.price && <span className="tag soft">{money(s.price.amount, s.price.currency)}</span>}
                 {s.privateNotes.map((p) => (
                   <span className="private-line" key={p}>
                     {p}
