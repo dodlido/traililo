@@ -397,14 +397,17 @@ export function bookingNotes(r: EmailBooking): string[] {
 
 
 const addDay = (iso: string, n: number) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-const SKIP = new Set(['hotel', 'lodge', 'casa', 'home', 'cabana', 'cabaña', 'hosteria', 'hostería', 'posada', 'apartment', 'departamento', 'departamentos']);
-const words = (s: string) =>
+const SKIP = new Set(['hotel', 'lodge', 'casa', 'home', 'cabana', 'hosteria', 'posada', 'apartment', 'departamento', 'departamentos', 'refugio', 'hostel', 'hostal', 'camping', 'cabin', 'cabins']);
+const split = (s: string) =>
   s
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 4 && !SKIP.has(w));
+    .filter((w) => w.length >= 4);
+const words = (s: string) => split(s).filter((w) => !SKIP.has(w));
+/** The generic kind-of-place words in a name ("hosteria", "refugio"). Two names whose kinds differ are two places. */
+const kinds = (s: string) => split(s).filter((w) => SKIP.has(w));
 
 export interface BookingMatch {
   /** match: same place, fill it in. replace: another place on the same night(s). new: nothing booked those nights. */
@@ -418,7 +421,17 @@ export function matchStay(stays: Stay[], b: EmailBooking): BookingMatch {
   const end = b.checkOut ?? addDay(b.checkIn, 1);
   const overlap = stays.filter((s) => s.checkIn < end && s.checkOut > b.checkIn!);
   const bw = words(b.name ?? '');
-  const same = overlap.find((s) => words(s.name).some((w) => bw.includes(w)));
+  // the same place: every distinctive word of the shorter name appears in the other (one shared word is not enough:
+  // "Hosteria Patagonia" must not match "Refugio Patagonia")
+  const same = overlap.find((s) => {
+    const sw = words(s.name);
+    if (!sw.length || !bw.length) return false;
+    const k1 = kinds(s.name);
+    const k2 = kinds(b.name ?? '');
+    if (k1.length && k2.length && !k1.some((k) => k2.includes(k))) return false;
+    const [small, big] = sw.length <= bw.length ? [sw, bw] : [bw, sw];
+    return small.every((w) => big.includes(w));
+  });
   if (same) return { kind: 'match', stay: same };
   const first = overlap.find((s) => s.checkIn === b.checkIn) ?? overlap[0];
   return first ? { kind: 'replace', stay: first } : { kind: 'new' };
@@ -433,7 +446,9 @@ export function applyBooking(base: Stay | undefined, b: EmailBooking, kind: Book
   const t = b.name && !air ? guessType(b.name) : undefined; // an Airbnb is an Airbnb, whatever its name says
   if (t) s.type = t as StayType;
   else if (kind !== 'match') s.type = air ? 'airbnb' : 'hotel';
-  if (b.checkIn) {
+  // a booking that sits inside a longer stay of the same place (one night of three) must not shrink it
+  const inside = kind === 'match' && !!base && !!b.checkIn && !!b.checkOut && b.checkIn >= base.checkIn && b.checkOut <= base.checkOut && (b.checkIn > base.checkIn || b.checkOut < base.checkOut);
+  if (b.checkIn && !inside) {
     s.checkIn = b.checkIn;
     s.nights = b.checkOut ? Math.max(1, daysBetween(b.checkIn, b.checkOut)) : s.nights;
     s.checkOut = addDay(s.checkIn, s.nights);

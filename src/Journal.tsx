@@ -46,11 +46,14 @@ export function JournalEditor({ trip, mutate, date, onClose }: { trip: Trip; mut
   const { busy, error, run } = useSave(mutate, onClose);
   const save = () => {
     const removed = (day.journal?.photos ?? []).filter((p) => !photos.includes(p));
+    // delete the removed pictures only once the save went through; a failed save rolls back and keeps them
     void run((t) => {
       const d = t.days.find((q) => q.date === date)!;
       if (!text.trim() && photos.length === 0) delete d.journal;
       else d.journal = { text: text.trim(), photos };
-    }).then(() => removed.forEach((p) => void deletePhoto(p)));
+    }).then((ok) => {
+      if (ok) removed.forEach((p) => void deletePhoto(p));
+    });
   };
   return (
     <Sheet title={`Journal · ${date}`} onClose={onClose}>

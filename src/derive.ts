@@ -12,6 +12,13 @@ export interface DayHiking {
   approx: boolean;
 }
 
+/** A hike's distance, falling back to its first route option. The one rule every total (recap, film, day bar) goes through. */
+export function hikeDistance(h: HikeEntry): { km?: number; approx: boolean } {
+  if (h.distanceKm !== undefined) return { km: h.distanceKm, approx: false };
+  const o = h.options?.[0]?.distanceKm;
+  return o !== undefined ? { km: o, approx: true } : { approx: false };
+}
+
 export function hikingFor(day: Day): DayHiking {
   let km = 0;
   let optionalKm = 0;
@@ -20,11 +27,9 @@ export function hikingFor(day: Day): DayHiking {
   for (const e of day.entries) {
     if (e.kind !== 'hike') continue;
     const h = e as HikeEntry;
-    let d = h.distanceKm;
-    if (d === undefined && h.options?.length) {
-      d = h.options[0].distanceKm;
-      if (d !== undefined) approx = true;
-    }
+    const hd = hikeDistance(h);
+    const d = hd.km;
+    if (hd.approx) approx = true;
     if (h.optional) {
       if (d !== undefined) optionalKm += d;
     } else if (d === undefined) missing = true;

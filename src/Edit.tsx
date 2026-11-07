@@ -86,16 +86,20 @@ export function Actions({ onSave, busy, error, onDelete, deleteLabel = 'Delete' 
 export function useSave(mutate: Mutate, onClose: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = async (fn: (t: Trip) => void) => {
+  /** Resolves true when the change was saved, false when it failed (the error is shown and the sheet stays open). */
+  const run = async (fn: (t: Trip) => void): Promise<boolean> => {
     setBusy(true);
     setError(null);
+    let ok = false;
     try {
       await mutate(fn);
+      ok = true;
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
     }
     setBusy(false);
+    return ok;
   };
   return { busy, error, run };
 }

@@ -2,7 +2,8 @@
 // road (or a ferry line, or a flight), a stop (a meal, a hike, a visit), a night, or a title. Pictures are matched to the
 // scene they were taken in by the time on them, and each day's journal is laid over the last scene of the day.
 // Everything here is pure: the player (Film.tsx) only asks "what is happening at time t".
-import type { CommuteEntry, Day, DrivePhoto, Entry, Leg, Point, Stay, Trip } from './model.ts';
+import type { CommuteEntry, Day, DrivePhoto, Entry, HikeEntry, Leg, Point, Stay, Trip } from './model.ts';
+import { hikeDistance } from './derive.ts';
 import { catOfEntry, CATS, type Cat } from './mapkit.ts';
 
 export type Mode = 'drive' | 'bus' | 'taxi' | 'ferry' | 'flight';
@@ -479,7 +480,7 @@ export function buildFilm(trip: Trip, upTo: string, opts: FilmOptions = {}): Fil
         kind: 'stop',
         span: spanOfEntry(e),
         est: 0,
-        stop: { cat: catOfEntry(e), title: e.title, eyebrow: CATS[catOfEntry(e)].label, facts: factsOf(e), at, wide: hike, hikeKm: hike ? (e.distanceKm ?? 0) : 0, climb: hike ? (e.elevationGainM ?? 0) : 0 },
+        stop: { cat: catOfEntry(e), title: e.title, eyebrow: CATS[catOfEntry(e)].label, facts: factsOf(e), at, wide: hike, hikeKm: hike && !(e as HikeEntry).optional ? (hikeDistance(e as HikeEntry).km ?? 0) : 0, climb: hike ? (e.elevationGainM ?? 0) : 0 },
         photos: [],
       });
     }

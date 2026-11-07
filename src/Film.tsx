@@ -522,8 +522,9 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
     (dir: 1 | -1) => {
       const f = filmRef.current;
       const here = f.days.findIndex((d) => t.current >= d.start && t.current < d.end);
-      const cur = here < 0 ? f.days.length - 1 : here;
-      const goes = dir === 1 ? cur + 1 : t.current - (f.days[cur]?.start ?? 0) > 2500 ? cur : cur - 1;
+      // before the first day (opening title) there is no current day; after the last one (end card) it is the last
+      const cur = here >= 0 ? here : f.days.length && t.current < f.days[0].start ? -1 : f.days.length - 1;
+      const goes = dir === 1 ? cur + 1 : cur < 0 ? -1 : t.current - f.days[cur].start > 2500 ? cur : cur - 1;
       if (goes >= f.days.length) return seek(f.total - 1);
       if (goes < 0) return seek(0);
       seek(f.days[goes].start);
