@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { anyPending, createTrip, deleteTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
+import { anyPending, createTrip, fresh, listTrips, type TripSummary } from './backend.ts';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
-import { HomeSetting } from './Edit.tsx';
+import { HomeSetting, Sheet } from './Edit.tsx';
 import { TEXT_SIZES, setTextSize, textSize, type TextSizeId } from './ui.ts';
 import { THEMES, Scene, themeFor } from './scenes.tsx';
 import { shortDate } from './derive.ts';
@@ -12,7 +12,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
   const [trips, setTrips] = useState<TripSummary[] | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
+  const [menu, setMenu] = useState(false);
   useEffect(() => {
     listTrips(session)
       .then((r) => {
@@ -21,44 +21,49 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
       })
       .catch((e) => setError(e?.message ?? 'Could not load your trips.'));
   }, [session]);
+  const email = session.user.email ?? '';
 
   return (
     <main className="home">
       <header className="home-head">
         <span className="wordmark">TraiLilo</span>
-        <button type="button" className="chip" onClick={() => (leaving || !anyPending() ? signOut() : setLeaving(true))}>{leaving ? 'Sign out and lose them' : 'Sign out'}</button>
+        <button type="button" className="avatar" aria-label="Your account and settings" aria-haspopup="dialog" onClick={() => setMenu(true)}>
+          {(email[0] ?? '?').toUpperCase()}
+        </button>
       </header>
       <h1 className="home-title">Your trips</h1>
       {offline && <p className="offline-note">You’re offline. Showing what’s saved on this phone.</p>}
-      {leaving && <p className="offline-note">Some changes on this phone have not been uploaded yet (there was no signal). Open the trip with a connection and they upload by themselves. Signing out now deletes them.</p>}
       {error && <p className="auth-error">{error}</p>}
-      {trips && trips.length === 0 && <p className="auth-note">No trips yet. Trips you’re invited to will show up here.</p>}
-      <NewTrip />
-      <HomeSetting />
-      <TextSizeSetting />
+      {trips && trips.length === 0 && (
+        <p className="auth-note">No trips yet. Start one from your account (the circle at the top), or wait for an invitation.</p>
+      )}
       <ul className="trip-list">
         {trips?.map((t) => (
-          <TripCard key={t.id} t={t} session={session} onDeleted={() => setTrips((l) => (l ? l.filter((x) => x.id !== t.id) : l))} />
+          <TripCard key={t.id} t={t} />
         ))}
       </ul>
+      {menu && <AccountSheet email={email} signOut={signOut} onClose={() => setMenu(false)} />}
     </main>
   );
 }
 
-function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session; onDeleted: () => void }) {
+/** Everything that is about you rather than about one trip. */
+function AccountSheet({ email, signOut, onClose }: { email: string; signOut: () => void; onClose: () => void }) {
+  const [leaving, setLeaving] = useState(false);
+  return (
+    <Sheet title="Your account" onClose={onClose}>
+      <p className="small account-email">{email}</p>
+      <NewTrip />
+      <HomeSetting />
+      <TextSizeSetting />
+      {leaving && <p className="offline-note">Some changes on this phone have not been uploaded yet (there was no signal). Open the trip with a connection and they upload by themselves. Signing out now deletes them.</p>}
+      <button type="button" className="chip" onClick={() => (leaving || !anyPending() ? signOut() : setLeaving(true))}>{leaving ? 'Sign out and lose them' : 'Sign out'}</button>
+    </Sheet>
+  );
+}
+
+function TripCard({ t }: { t: TripSummary }) {
   const th = themeFor(t.cover_region);
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
-  const [sure, setSure] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [delErr, setDelErr] = useState<string | null>(null);
-  const [members, setMembers] = useState<{ email: string; role: 'partner' }[] | null>(null);
-  const refresh = () => listMembers(t.id).then(setMembers).catch((e) => setMsg(e instanceof Error ? e.message : 'Could not load who has access.'));
-  useEffect(() => {
-    if (open && t.role === 'owner') void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
   return (
     <li className="trip-card" style={{ ['--accent' as string]: th.accent }}>
       <a href={`#/trip/${t.id}`} className="trip-card-link">
@@ -69,84 +74,6 @@ function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session;
           {t.role === 'partner' && <p className="role-tag">You’re a travel partner: you can edit everything</p>}
         </div>
       </a>
-      {t.role === 'owner' && (
-        <div className="share">
-          <button type="button" className="chip" onClick={() => setOpen(!open)}><Icon name="eye" size={16} /> Add a travel partner</button>
-          {open && (
-            <>
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const who = email.trim();
-                  const err = await shareTrip(t.id, who);
-                  setMsg(err ?? `${who} is now a travel partner and can edit everything.`);
-                  if (!err) {
-                    setEmail('');
-                    void refresh();
-                  }
-                }}
-              >
-                <input type="email" required placeholder="their email (they need an account)" value={email} onChange={(e) => setEmail(e.target.value)} />
-                <p className="hint">A travel partner sees and edits everything, including bookings, notes and journal.</p>
-                <button className="auth-primary">Share</button>
-                {msg && <p className="auth-note small">{msg}</p>}
-              </form>
-              {members && members.length > 0 && (
-                <ul className="members">
-                  {members.map((m) => (
-                    <li key={m.email}>
-                      <span>{m.email}</span>
-                      <em>travel partner</em>
-                      <button
-                        type="button"
-                        className="chip"
-                        onClick={async () => {
-                          const err = await unshareTrip(t.id, m.email);
-                          setMsg(err ?? `${m.email} no longer has access.`);
-                          void refresh();
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-          {!sure ? (
-            <button type="button" className="chip danger" onClick={() => setSure(true)}>Delete trip</button>
-          ) : (
-            <div className="delete-confirm" role="alertdialog" aria-label={`Delete ${t.title}`}>
-              <p>
-                <b>Delete “{t.title}” for good?</b> Every day, booking, note and journal entry goes, and so does everyone’s access. This cannot be undone. Pictures in your Google Drive are not touched.
-              </p>
-              {delErr && <p className="auth-error">{delErr}</p>}
-              <div className="row">
-                <button
-                  type="button"
-                  className="chip danger"
-                  disabled={deleting}
-                  onClick={async () => {
-                    setDeleting(true);
-                    setDelErr(null);
-                    try {
-                      await deleteTrip(session, t.id);
-                      onDeleted();
-                    } catch (e) {
-                      setDelErr(e instanceof Error ? e.message : 'Could not delete the trip.');
-                      setDeleting(false);
-                    }
-                  }}
-                >
-                  {deleting ? 'Deleting…' : 'Yes, delete it'}
-                </button>
-                <button type="button" className="chip" disabled={deleting} onClick={() => { setSure(false); setDelErr(null); }}>Keep it</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </li>
   );
 }

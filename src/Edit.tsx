@@ -1075,7 +1075,7 @@ export function AddDayEditor({ trip, mutate, onClose }: { trip: Trip; mutate: Mu
   );
 }
 
-export function SettingsEditor({ title, cover, themes, onSave, onClose }: { title: string; cover: string; themes: string[]; onSave: (title: string, cover: string) => Promise<void>; onClose: () => void }) {
+export function SettingsEditor({ title, cover, themes, onSave, onClose, extra }: { title: string; cover: string; themes: string[]; onSave: (title: string, cover: string) => Promise<void>; onClose: () => void; extra?: ReactNode }) {
   const [t, setT] = useState(title);
   const [c, setC] = useState(cover);
   const [busy, setBusy] = useState(false);
@@ -1098,6 +1098,7 @@ export function SettingsEditor({ title, cover, themes, onSave, onClose }: { titl
           setBusy(false);
         }}
       />
+      {extra}
     </Sheet>
   );
 }

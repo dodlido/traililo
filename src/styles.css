@@ -839,3 +839,16 @@ html { font-size: calc(16px * var(--text-scale, 1)); }
 .cost-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: var(--ink-2); border-radius: 12px; padding: 10px 14px; }
 .cost-list b { font-size: calc(20rem / 16); }
 .cost-list span { color: var(--fog); font-size: calc(14rem / 16); }
+
+/* account avatar on the home screen, and the trip admin blocks in Trip settings */
+.avatar { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--rule); background: var(--card); color: var(--ice); font: inherit; font-weight: 600; font-size: calc(17rem / 16); cursor: pointer; display: grid; place-items: center; }
+.account-email { color: var(--fog); overflow-wrap: anywhere; }
+.sheet-panel .new-trip { margin: 0; }
+.sheet-body > .chip { justify-self: start; margin-top: 6px; }
+.admin-block { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--rule); display: grid; gap: 10px; }
+.admin-block h3 { margin: 0; font-size: calc(15rem / 16); }
+.admin-block form { display: grid; gap: 10px; }
+.admin-block input { font: inherit; font-size: calc(16rem / 16); color: var(--ice); background: var(--ink-2); border: 1px solid var(--rule); border-radius: 12px; padding: 11px 14px; min-width: 0; }
+.admin-block .chip { border-color: var(--rule); background: var(--ink-2); justify-self: start; }
+.admin-block .chip.danger { color: #ff8a80; border-color: color-mix(in srgb, #ff8a80 55%, transparent); }
+.admin-block .hint { font-size: calc(13rem / 16); color: var(--fog); margin: 0; }

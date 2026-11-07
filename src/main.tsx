@@ -20,7 +20,7 @@ function TripLoader({ session, id, sub }: { session: Session; id: string; sub: s
   }, [session.user.id, id]);
   if (error) return <div className="auth"><main className="auth-card"><p className="auth-error">{error}</p><a className="auth-link" href="#/">Back to your trips</a></main></div>;
   if (!bundle) return <div className="auth"><Scene region="TraiLilo" theme={COVER} seed="cover" photo={false} className="auth-scene" /><main className="auth-card"><p className="auth-note">Opening your trip…</p></main></div>;
-  return <TripApp bundle={bundle} base={`#/trip/${id}`} sub={sub} />;
+  return <TripApp bundle={bundle} base={`#/trip/${id}`} sub={sub} session={session} />;
 }
 
 function Root() {

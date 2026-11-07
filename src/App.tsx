@@ -29,6 +29,8 @@ const ImportBookings = lazy(() => import('./ImportBookings.tsx').then((m) => ({ 
 import { AddDayEditor, AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, isNetworkError, pendingClear, pendingPut, saveTrip } from './backend.ts';
 import { SyncBar, type SyncState } from './SyncBar.tsx';
+import { DeleteTrip, Partners } from './TripAdmin.tsx';
+import type { Session } from '@supabase/supabase-js';
 import { same } from './same.ts';
 import { SCHEMA } from './migrate.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
@@ -79,7 +81,7 @@ const useDesktop = () => {
   return d;
 };
 
-export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; sub: string }) {
+export function TripApp({ bundle, base, sub, session }: { bundle: Bundle; base: string; sub: string; session: Session }) {
   // changes made on this phone that never reached the database come back first, and are uploaded as soon as there is signal
   const kept = bundle.pending;
   const [rawTrip, setTrip] = useState(kept ? kept.trip : bundle.trip);
@@ -500,6 +502,14 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
             setTitle(t);
             setCover(c);
           }}
+          extra={
+            bundle.owner && (
+              <>
+                <Partners tripId={bundle.id} />
+                <DeleteTrip session={session} tripId={bundle.id} title={title} onDeleted={() => { location.hash = '#/'; }} />
+              </>
+            )
+          }
         />
       )}
     </div>
