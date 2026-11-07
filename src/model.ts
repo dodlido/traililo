@@ -47,7 +47,7 @@ export interface Leg {
   path?: [number, number][];
   /** A ferry line was looked for and none was found, so it stays a straight line. */
   pathTried?: boolean;
-  /** The start or the end is the owner's home. Friends' copies get no position or road for such a leg. */
+  /** The start or the end is the owner's home. Its position is filled in from the account, never stored in the trip. */
   fromHome?: boolean;
   toHome?: boolean;
 }
@@ -66,7 +66,7 @@ interface EntryBase {
   at?: Point;
   /** Filled in by the importer to close a gap in the sheet (not something you planned). */
   assumed?: boolean;
-  /** Notes only the owner sees. Never part of the friends' version. */
+  /** Notes with details such as a phone number or booking reference. */
   privateNotes?: string[];
 }
 
@@ -140,7 +140,7 @@ export interface Stay {
   nights: number;
   booking?: BookingInfo;
   notes: string[];
-  /** Address and similar details. Never shown in the shared read-only view. */
+  /** Address and similar details: phone, PIN, confirmation number. */
   privateNotes: string[];
   /** True when the sheet gives no lodging name, only a place. */
   nameIsPlaceholder?: boolean;
@@ -155,7 +155,7 @@ export interface Todo {
   done: boolean;
   /** Pinned to the day with a warning flag, for example "book in advance". */
   warning?: boolean;
-  /** Contains a phone number or address. Hidden from the shared view. */
+  /** Contains a phone number or address. */
   private?: boolean;
 }
 
@@ -189,8 +189,6 @@ export interface Journal {
   text: string;
   /** Storage paths of uploaded pictures. */
   photos: string[];
-  /** Private unless you choose to show friends. */
-  shared?: boolean;
 }
 
 export interface PackItem {

@@ -11,7 +11,7 @@ create table if not exists public.trips (
   cover_region text not null default 'Torres del Paine',
   start_date date,
   end_date date,
-  data jsonb not null,             -- the friends' version: { trip, tracks }
+  data jsonb not null,             -- { tracks }: the map tracks of the trip (migration-5; before that it also held a friends' version)
   created_at timestamptz not null default now()
 );
 

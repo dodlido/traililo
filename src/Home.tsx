@@ -45,12 +45,11 @@ function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session;
   const th = themeFor(t.cover_region);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'friend' | 'partner'>('friend');
   const [msg, setMsg] = useState<string | null>(null);
   const [sure, setSure] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [delErr, setDelErr] = useState<string | null>(null);
-  const [members, setMembers] = useState<{ email: string; role: 'friend' | 'partner' }[] | null>(null);
+  const [members, setMembers] = useState<{ email: string; role: 'partner' }[] | null>(null);
   const refresh = () => listMembers(t.id).then(setMembers).catch((e) => setMsg(e instanceof Error ? e.message : 'Could not load who has access.'));
   useEffect(() => {
     if (open && t.role === 'owner') void refresh();
@@ -64,20 +63,19 @@ function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session;
           <h2>{t.title}</h2>
           {t.start_date && t.end_date && <p>{shortDate(t.start_date)} to {shortDate(t.end_date)}, {t.end_date.slice(0, 4)}</p>}
           {t.role === 'partner' && <p className="role-tag">You’re a travel partner: you can edit everything</p>}
-          {t.role === 'friend' && <p className="role-tag">Shared with you to view</p>}
         </div>
       </a>
       {t.role === 'owner' && (
         <div className="share">
-          <button type="button" className="chip" onClick={() => setOpen(!open)}><Icon name="eye" size={16} /> Share</button>
+          <button type="button" className="chip" onClick={() => setOpen(!open)}><Icon name="eye" size={16} /> Add a travel partner</button>
           {open && (
             <>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const who = email.trim();
-                  const err = await shareTrip(t.id, who, role);
-                  setMsg(err ?? (role === 'partner' ? `${who} is now a travel partner and can edit everything.` : `Shared with ${who}. They see the friends’ version.`));
+                  const err = await shareTrip(t.id, who);
+                  setMsg(err ?? `${who} is now a travel partner and can edit everything.`);
                   if (!err) {
                     setEmail('');
                     void refresh();
@@ -85,10 +83,7 @@ function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session;
                 }}
               >
                 <input type="email" required placeholder="their email (they need an account)" value={email} onChange={(e) => setEmail(e.target.value)} />
-                <div className="role-pick" role="radiogroup" aria-label="What they can do">
-                  <label><input type="radio" name={`r-${t.id}`} checked={role === 'friend'} onChange={() => setRole('friend')} /> <b>Friend</b> sees the friends’ version, read-only</label>
-                  <label><input type="radio" name={`r-${t.id}`} checked={role === 'partner'} onChange={() => setRole('partner')} /> <b>Travel partner</b> sees and edits everything, including bookings, notes and journal</label>
-                </div>
+                <p className="hint">A travel partner sees and edits everything, including bookings, notes and journal.</p>
                 <button className="auth-primary">Share</button>
                 {msg && <p className="auth-note small">{msg}</p>}
               </form>
@@ -97,7 +92,7 @@ function TripCard({ t, session, onDeleted }: { t: TripSummary; session: Session;
                   {members.map((m) => (
                     <li key={m.email}>
                       <span>{m.email}</span>
-                      <em>{m.role === 'partner' ? 'travel partner' : 'friend'}</em>
+                      <em>travel partner</em>
                       <button
                         type="button"
                         className="chip"

@@ -1,6 +1,6 @@
 // "Home": one place, set once for the whole account, that any trip can use as a place to sleep. The coordinates live in
 // the account (they follow you between devices), never in a trip: a trip only says "Home", and the app fills in where
-// that is while the owner is looking. Friends' copies get no position for it at all.
+// that is while the owner is looking.
 import { useEffect, useState } from 'react';
 import type { Point, Trip } from './model.ts';
 import { sb } from './backend.ts';

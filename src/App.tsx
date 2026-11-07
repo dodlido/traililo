@@ -53,7 +53,6 @@ const useT = () => useContext(TripCtx);
 const ShowCtx = createContext<(id: string) => void>(() => {});
 const TodayCtx = createContext<Today | null>(null);
 const km = (v: number) => `${Math.round(v * 10) / 10} km`;
-const PERSONAL_NOTE = /\b(Etay|Lior)\b|^Assumed:/i;
 
 type Route = { tab: 'journey' | 'map' | 'stays' | 'plan' | 'recap'; chapter: number | null };
 function parseSub(sub: string, runsLen: number): Route {
@@ -173,10 +172,6 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     [bundle, base, trip, title, editing, tracks],
   );
   const { runs, staysById } = data;
-  // friends' view: no to-dos, addresses, phone numbers or booking details. Friends only ever get that data; the owner can preview it.
-  const [preview, setPreview] = useState(false);
-  const shared = !bundle.owner || preview;
-  const setShared = setPreview;
   const route = useMemo(() => parseSub(sub, runs.length), [sub, runs.length]);
   const today = useMemo(() => whereIsToday(trip), [trip]);
   const [active, setActive] = useState(() => (today.state === 'during' ? today.date : trip.days[0].date));
@@ -296,26 +291,26 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     <TripCtx.Provider value={data}>
     <ShowCtx.Provider value={showOnMap}>
     <TodayCtx.Provider value={today}>
-    <div className={`shell${shared ? ' is-shared' : ''}`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
+    <div className={`shell`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
         <div className="page" ref={page}>
-          {(route.tab === 'journey' || (route.tab === 'recap' && (shared || !bundle.owner))) && route.chapter === null && <Journey shared={shared} setShared={setShared} go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
-          {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} shared={shared} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
-          {route.tab === 'recap' && !shared && bundle.owner && <RecapView trip={trip} title={title} canEdit mutate={commit} go={go} />}
-          {route.tab === 'stays' && <Stays shared={shared} go={go} />}
-          {route.tab === 'plan' && !shared && bundle.owner && <Plan trip={trip} mutate={commit} openDay={openDay} base={base} />}
+          {route.tab === 'journey' && route.chapter === null && <Journey go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
+          {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
+          {route.tab === 'recap' && <RecapView trip={trip} title={title} canEdit mutate={commit} go={go} />}
+          {route.tab === 'stays' && <Stays go={go} />}
+          {route.tab === 'plan' && <Plan trip={trip} mutate={commit} openDay={openDay} base={base} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
         </div>
         <nav className="tabs" aria-label="Sections">
           <Tab icon="journey" label="Journey" on={route.tab === 'journey' || route.tab === 'recap'} onClick={() => (route.tab === 'map' ? openDay(active) : go(''))} />
           {!desktop && <Tab icon="map" label="Map" on={route.tab === 'map'} onClick={() => go('map')} />}
           <Tab icon="bed" label="Stays" on={route.tab === 'stays'} onClick={() => go('stays')} />
-          {bundle.owner && !shared && <Tab icon="flag" label="Plan" on={route.tab === 'plan'} onClick={() => go('plan')} />}
+          {bundle.owner && <Tab icon="flag" label="Plan" on={route.tab === 'plan'} onClick={() => go('plan')} />}
         </nav>
       </section>
 
       <section className="map-pane" aria-hidden={!mapVisible}>
-        <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} edit={bundle.owner && !shared ? mapEdit : undefined} />
+        <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} edit={bundle.owner ? mapEdit : undefined} />
         <div className="map-day">
           <button type="button" aria-label="Previous day" onClick={() => step(-1)} disabled={activeIdx === 0}>
             <Icon name="back" size={20} />
@@ -372,7 +367,7 @@ function Tab({ icon, label, on, onClick }: { icon: string; label: string; on: bo
   );
 }
 
-function Journey({ shared, setShared, go, editing, setEditing, openToday }: { shared: boolean; setShared: (v: boolean) => void; go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void; openToday: () => void }) {
+function Journey({ go, editing, setEditing, openToday }: { go: (h: string) => void; editing: boolean; setEditing: (v: boolean) => void; openToday: () => void }) {
   const { trip, runs, base, owner, title, openSheet, staysById, tracks } = useT();
   const [exported, setExported] = useState('');
   const today = useContext(TodayCtx)!;
@@ -390,16 +385,9 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
           </a>
           <span className="wordmark">TraiLilo</span>
           {owner && (
-            <>
-              {!shared && (
-                <button type="button" className={editing ? 'chip is-on' : 'chip'} aria-pressed={editing} onClick={() => setEditing(!editing)}>
-                  <Icon name="edit" size={16} /> {editing ? 'Done' : 'Edit'}
-                </button>
-              )}
-              <button type="button" className={shared ? 'chip is-on' : 'chip'} aria-pressed={shared} onClick={() => { setShared(!shared); setEditing(false); }}>
-                <Icon name="eye" size={16} /> {shared ? 'Friends’ view' : 'Your view'}
-              </button>
-            </>
+            <button type="button" className={editing ? 'chip is-on' : 'chip'} aria-pressed={editing} onClick={() => setEditing(!editing)}>
+              <Icon name="edit" size={16} /> {editing ? 'Done' : 'Edit'}
+            </button>
           )}
         </div>
         <div className="cover-text">
@@ -407,16 +395,16 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
             {monthShort(trip.startDate)} {dayOfMonth(trip.startDate)} to {monthShort(trip.endDate)} {dayOfMonth(trip.endDate)}, {trip.endDate.slice(0, 4)}
           </p>
           <h1>{title}</h1>
-          {editing && owner && !shared && (
+          {editing && owner && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'settings' })}><Icon name="edit" size={16} /> Trip settings</button>
           )}
-          {editing && owner && !shared && (
+          {editing && owner && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'addday' })}><Icon name="plus" size={16} /> Add days</button>
           )}
-          {editing && owner && !shared && (
+          {editing && owner && (
             <button type="button" className="chip" onClick={() => openSheet({ type: 'bookings' })}><Icon name="bed" size={16} /> Import bookings</button>
           )}
-          {editing && owner && !shared && (
+          {editing && owner && (
             <button type="button" className="chip" onClick={() => void exportTrip(title, trip, tracks).then(setExported).catch(() => setExported('Could not export.'))}><Icon name="note" size={16} /> Export trip</button>
           )}
           {exported && <p className="small" role="status">{exported}</p>}
@@ -428,7 +416,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
 
       <TodayCard today={today} start={trip.days[0].date} where={nowStay ?? nowDay.region} onOpen={openToday} />
 
-      {owner && !shared && (
+      {owner && (
         <a className="recap-link" href={`${base}/recap`}>
           <Icon name="spark" size={22} />
           <span>
@@ -478,7 +466,7 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
         </ul>
       </details>
 
-      {owner && !shared && (
+      {owner && (
         <details className="notes-fold">
           <summary>Import notes (only you see this)</summary>
           <ImportNotes />
@@ -488,13 +476,13 @@ function Journey({ shared, setShared, go, editing, setEditing, openToday }: { sh
   );
 }
 
-function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number; shared: boolean; active: string; go: (h: string) => void; showOnMap: () => void; desktop: boolean }) {
+function Chapter({ idx, active, go, showOnMap, desktop }: { idx: number; active: string; go: (h: string) => void; showOnMap: () => void; desktop: boolean }) {
   const { runs, base, trip, owner, editing, setEditing, mutate } = useT();
   const run = runs[idx];
   const mine = trip.photos?.[run.region];
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState('');
-  const canPhoto = owner && editing && !shared;
+  const canPhoto = owner && editing;
   const pick = async (file: File | undefined) => {
     if (!file) return;
     setProblem('');
@@ -535,7 +523,7 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
           <Icon name="back" size={22} />
         </button>
         <div className="hero-actions">
-          {owner && !shared && (
+          {owner && (
             <button type="button" className={editing ? 'chip is-on' : 'chip'} aria-pressed={editing} onClick={() => setEditing(!editing)}>
               <Icon name="edit" size={16} /> {editing ? 'Done' : 'Edit'}
             </button>
@@ -575,7 +563,7 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
       </header>
       <ol className="days">
         {run.days.map((d) => (
-          <DayCard key={d.date} day={d} shared={shared} active={d.date === active} />
+          <DayCard key={d.date} day={d} active={d.date === active} />
         ))}
       </ol>
       <nav className="chapter-nav">
@@ -594,7 +582,7 @@ function Chapter({ idx, shared, active, go, showOnMap, desktop }: { idx: number;
   );
 }
 
-function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
+function Stays(_: { go: (h: string) => void }) {
   const { trip, base, editing, openSheet } = useT();
   return (
     <>
@@ -609,7 +597,7 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
             <li key={s.id} className={isCamp(s) ? 'stay-card camp' : 'stay-card'} style={{ ['--accent' as string]: th.accent }}>
               <Scene region={region} theme={th} className="stay-art" />
               <div>
-                {editing && !shared && (
+                {editing && (
                   <button type="button" className="round small edit-btn" aria-label={`Edit ${s.name}`} onClick={() => openSheet({ type: 'stay', id: s.id })}>
                     <Icon name="edit" size={16} />
                   </button>
@@ -629,8 +617,8 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
                   {region} · {shortDate(s.checkIn)} to {shortDate(s.checkOut)}
                 </p>
                 {s.assumed && <span className="tag">to be booked</span>}
-                {!shared && s.booking?.bookedBy && <span className="tag soft">booked by {s.booking.bookedBy}</span>}
-                {!shared && s.privateNotes.map((p) => (
+                {s.booking?.bookedBy && <span className="tag soft">booked by {s.booking.bookedBy}</span>}
+                {s.privateNotes.map((p) => (
                   <span className="private-line" key={p}>
                     {p}
                   </span>
@@ -640,7 +628,7 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
           );
         })}
       </ul>
-      {editing && !shared && (
+      {editing && (
         <p className="foot-link">
           <button type="button" className="add-btn" onClick={() => openSheet({ type: 'stay' })}>
             <Icon name="plus" size={18} /> Add a place to sleep
@@ -654,18 +642,18 @@ function Stays({ shared }: { shared: boolean; go: (h: string) => void }) {
   );
 }
 
-function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: boolean }) {
+function DayCard({ day, active }: { day: Day; active: boolean }) {
   const { staysById, sheet, owner, editing, openSheet, mutate, trip, tracks } = useT();
   const today = useContext(TodayCtx)!;
   const isToday = today.state === 'during' && trip_dayIs(today, day.date);
   const [newTodo, setNewTodo] = useState('');
-  const canEdit = editing && !shared;
+  const canEdit = editing;
   const stay = day.stayId ? staysById.get(day.stayId) : undefined;
   // where last night was spent, for the way out in the morning
   const prevDay = trip.days[trip.days.findIndex((d) => d.date === day.date) - 1];
   const prevStay = prevDay?.stayId ? staysById.get(prevDay.stayId) : undefined;
   const shownWarnings = new Set(day.entries.flatMap((e) => e.warnings));
-  const todos = shared ? [] : day.todos.filter((td) => !shownWarnings.has(td.text));
+  const todos = day.todos.filter((td) => !shownWarnings.has(td.text));
   const dayLines = (trip.lines ?? []).filter((l) => l.date === day.date);
   const nothing = day.entries.length === 0 && todos.length === 0 && dayLines.length === 0;
   return (
@@ -688,7 +676,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
         {canEdit && <DriveGap day={day} index={-1} stay={stay} prevStay={prevStay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
         {day.entries.map((e, i) => (
           <Fragment key={e.id}>
-            <EntryView entry={e} shared={shared} date={day.date} index={i} count={day.entries.length} day={day} />
+            <EntryView entry={e} date={day.date} index={i} count={day.entries.length} day={day} />
             {canEdit && <DriveGap day={day} index={i} stay={stay} tracks={tracks} mutate={mutate} openSheet={openSheet} />}
           </Fragment>
         ))}
@@ -696,7 +684,7 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
           <LineRow key={l.id} line={l} hidden={l.mode === 'trek' && !l.stops && day.entries.some((e) => e.kind === 'hike' && !!tracks[e.id])} canEdit={canEdit} onEdit={() => openSheet({ type: 'line', date: day.date, id: l.id })} />
         ))}
         {nothing && <p className="empty">Nothing planned yet.</p>}
-        {(todos.length > 0 || canEdit) && !shared && (
+        {(todos.length > 0 || canEdit) && (
           <ul className="todos">
             {todos.map((td) => (
               <li key={td.id} className={`${td.warning ? 'todo todo-warn' : 'todo'}${td.done ? ' is-done' : ''}`}>
@@ -738,21 +726,21 @@ function DayCard({ day, shared, active }: { day: Day; shared: boolean; active: b
             )}
           </ul>
         )}
-        {stay && <StayLine stay={stay} date={day.date} shared={shared} />}
-        <JournalBlock day={day} canWrite={!shared && owner && editing} onWrite={() => openSheet({ type: 'journal', date: day.date })} />
-        {!shared && owner && <DrivePhotosBlock day={day} trip={trip} canWrite={editing} mutate={mutate} />}
+        {stay && <StayLine stay={stay} date={day.date} />}
+        <JournalBlock day={day} canWrite={owner && editing} onWrite={() => openSheet({ type: 'journal', date: day.date })} />
+        {owner && <DrivePhotosBlock day={day} trip={trip} canWrite={editing} mutate={mutate} />}
         {canEdit && (
           <button type="button" className="add-btn" onClick={() => openSheet({ type: 'add', date: day.date })}>
             <Icon name="plus" size={18} /> Add to this day
           </button>
         )}
-        {owner && !shared && sheet[day.date] && <SheetText cells={sheet[day.date]} />}
+        {owner && sheet[day.date] && <SheetText cells={sheet[day.date]} />}
       </div>
     </li>
   );
 }
 
-function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: boolean }) {
+function StayLine({ stay, date }: { stay: Stay; date: string }) {
   const { editing, openSheet } = useT();
   const night = nightOf(stay, date);
   return (
@@ -761,13 +749,13 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
       <span className="stay-name">{stay.name}</span>
       {stay.assumed && <span className="tag">to be booked</span>}
       {night && <span className="meta">{night}</span>}
-      {!shared && stay.booking?.bookedBy && <span className="meta">booked by {stay.booking.bookedBy}</span>}
-      {!shared && stay.privateNotes.map((p) => (
+      {stay.booking?.bookedBy && <span className="meta">booked by {stay.booking.bookedBy}</span>}
+      {stay.privateNotes.map((p) => (
         <span className="meta meta-private" key={p}>
           {p}
         </span>
       ))}
-      {editing && !shared && (
+      {editing && (
         <button type="button" className="round small edit-btn" aria-label="Edit this place to sleep" onClick={() => openSheet({ type: 'stay', id: stay.id })}>
           <Icon name="edit" size={16} />
         </button>
@@ -776,7 +764,7 @@ function StayLine({ stay, date, shared }: { stay: Stay; date: string; shared: bo
   );
 }
 
-function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry; shared: boolean; date: string; index: number; count: number; day: Day }) {
+function EntryView({ entry: e, date, index, count, day }: { entry: Entry; date: string; index: number; count: number; day: Day }) {
   const { tracks, editing, openSheet, setTrack, mutate } = useT();
   const showOnMap = useContext(ShowCtx);
   // swap with the neighbour; the order shown is the order saved
@@ -804,9 +792,8 @@ function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry
     }
   };
   const mappable = !!(tracks[e.id] || e.at);
-  const notes = shared ? e.notes.filter((n) => !PERSONAL_NOTE.test(n)) : e.notes;
+  const notes = e.notes;
   if (e.kind === 'journal') {
-    if (shared) return null;
     const pics = day.drivePhotos?.filter((p) => e.photoIds?.includes(p.id)) ?? [];
     return (
       <article className="entry kind-journal">
@@ -871,20 +858,20 @@ function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry
             ))}
           </ul>
         )}
-        {!shared && (e.privateNotes ?? []).length > 0 && (
+        {(e.privateNotes ?? []).length > 0 && (
           <ul className="notes private-notes">
             {(e.privateNotes ?? []).map((n) => (
               <li key={n}>{n}</li>
             ))}
           </ul>
         )}
-        <Links links={e.links} shared={shared} />
-        {editing && !shared && (
+        <Links links={e.links} />
+        {editing && (
           <button type="button" className="show-map edit-entry" onClick={() => openSheet({ type: 'entry', date, id: e.id })}>
             <Icon name="edit" size={16} /> Edit
           </button>
         )}
-        {editing && !shared && count > 1 && (
+        {editing && count > 1 && (
           <span className="reorder" role="group" aria-label="Change the order">
             <button type="button" className="show-map edit-entry" disabled={index === 0} aria-label={`Move ${e.title} up`} onClick={() => move(-1)}>
               <span className="arrow-up"><Icon name="back" size={16} /></span> Up
@@ -894,7 +881,7 @@ function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry
             </button>
           </span>
         )}
-        {editing && !shared && e.kind === 'hike' && (
+        {editing && e.kind === 'hike' && (
           <>
             <label className="show-map edit-entry">
               <Icon name="plus" size={16} /> {gpxBusy ? 'Adding…' : tracks[e.id] ? 'Replace GPX trail' : 'Add GPX trail'}
@@ -914,7 +901,7 @@ function EntryView({ entry: e, shared, date, index, count, day }: { entry: Entry
           </button>
         )}
         {tracks[e.id] && <OpenTrail title={tracks[e.id].name || e.title} lines={tracks[e.id].lines} />}
-        {!shared && e.booking && (
+        {e.booking && (
           <p className="meta-line">
             {e.booking.bookedBy ? `Booked by ${e.booking.bookedBy}` : 'Booked'}
             {e.booking.source !== 'unspecified' ? ` on ${e.booking.source === 'getyourguide' ? 'GetYourGuide' : e.booking.source === 'booking' ? 'Booking.com' : 'Airbnb'}` : ''}
@@ -1020,8 +1007,8 @@ function FactRow({ bits }: { bits: string[] }) {
   );
 }
 
-function Links({ links, shared }: { links: Link[]; shared: boolean }) {
-  const shown = shared ? links.filter((l) => l.url) : links;
+function Links({ links }: { links: Link[] }) {
+  const shown = links;
   if (shown.length === 0) return null;
   return (
     <p className="links">

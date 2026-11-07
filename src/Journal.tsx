@@ -1,4 +1,4 @@
-// Your own words and pictures for a day. Private unless you choose to show friends.
+// Your own words and pictures for a day.
 import { useState } from 'react';
 import type { Day, JournalEntry, Trip } from './model.ts';
 import { driveConnected } from './drive.ts';
@@ -14,7 +14,7 @@ export function JournalBlock({ day, canWrite, onWrite }: { day: Day; canWrite: b
   return (
     <div className="journal">
       <h4>
-        Journal{j?.shared ? ' · shown to friends' : ''}
+        Journal
       </h4>
       {has && (
         <>
@@ -43,14 +43,13 @@ export function JournalEditor({ trip, mutate, date, onClose }: { trip: Trip; mut
   const day = trip.days.find((d) => d.date === date)!;
   const [text, setText] = useState(day.journal?.text ?? '');
   const [photos, setPhotos] = useState<string[]>(day.journal?.photos ?? []);
-  const [shared, setShared] = useState(!!day.journal?.shared);
   const { busy, error, run } = useSave(mutate, onClose);
   const save = () => {
     const removed = (day.journal?.photos ?? []).filter((p) => !photos.includes(p));
     void run((t) => {
       const d = t.days.find((q) => q.date === date)!;
       if (!text.trim() && photos.length === 0) delete d.journal;
-      else d.journal = { text: text.trim(), photos, shared };
+      else d.journal = { text: text.trim(), photos };
     }).then(() => removed.forEach((p) => void deletePhoto(p)));
   };
   return (
@@ -72,9 +71,6 @@ export function JournalEditor({ trip, mutate, date, onClose }: { trip: Trip; mut
           </div>
         </Field>
       )}
-      <label className="check">
-        <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} /> Show this day’s journal to friends
-      </label>
       <Actions onSave={save} busy={busy} error={error} />
     </Sheet>
   );

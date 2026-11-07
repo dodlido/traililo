@@ -519,7 +519,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
   const detailsF = (
     <>
 
-      <Field label="Notes" hint="One per line. Friends see these."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Notes" hint="One per line."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       <Field label="Heads-up" hint="Things not to forget, like “book ahead”. One per line."><textarea rows={2} value={warn} onChange={(e) => setWarn(e.target.value)} /></Field>
       <Field label="Private notes" hint="Only you see these."><textarea rows={2} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>
 
@@ -688,7 +688,7 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
           <Field label="GetYourGuide link" hint="Optional, for a guided hike. Kept as a link for now.">
             <input inputMode="url" placeholder="https://www.getyourguide.com/…" value={gyg} onChange={(e) => setGyg(e.target.value)} />
           </Field>
-          <Field label="Notes" hint="One per line. Friends see these."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          <Field label="Notes" hint="One per line."><textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
           <Actions onSave={save} busy={busy || own} error={err ?? error} />
         </>
       )}
@@ -761,7 +761,7 @@ export function HomeSetting() {
         )}
       </p>
       {open && <PlaceSearch always current={home?.point} onPick={(name, p) => void set({ name: name.split(',')[0].trim() || 'Home', point: p })} onClear={() => void set(null)} />}
-      <p className="hint">Saved to your account, not to any trip, so it is the same everywhere and friends never get it.</p>
+      <p className="hint">Saved to your account, not to any trip, so it is the same everywhere and no trip carries it.</p>
       {msg && <p role="status" className="hint">{msg}</p>}
     </div>
   );
@@ -893,7 +893,7 @@ export function StayEditor({ trip, mutate, id, date, start, onClose }: { trip: T
           </select>
         </Field>
       </div>}
-      <Field label="Notes" hint="One per line. Friends see these."><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Field label="Notes" hint="One per line."><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       {!isHome && <Field label="Private (address, phone, door code)" hint="Only you see these."><textarea rows={3} value={priv} onChange={(e) => setPriv(e.target.value)} /></Field>}
       {!isHome && <Field label="Where on the map"><PlaceSearch always current={s.point} onPick={(_, p) => up({ point: p })} onClear={() => up({ point: undefined })} /></Field>}
       <Actions onSave={save} busy={busy} error={err ?? error} onDelete={existing ? remove : undefined} />

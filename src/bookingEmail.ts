@@ -357,7 +357,7 @@ export function townOf(address: string): string | undefined {
   if (parts.length < 3) return undefined;
   for (const p of parts.slice(1, -1)) {
     const t = p.replace(/\S*\d\S*/g, '').replace(/\s+/g, ' ').trim(); // drop street numbers and postcodes
-    if ((t.match(/\p{L}/gu) ?? []).length >= 3 && !/[\u0590-\u05FF]/.test(t)) return t; // the town shows to friends, so only Latin-script names
+    if ((t.match(/\p{L}/gu) ?? []).length >= 3 && !/[\u0590-\u05FF]/.test(t)) return t; // the town is used as a place label, so only Latin-script names
   }
   return undefined;
 }

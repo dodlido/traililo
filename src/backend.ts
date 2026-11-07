@@ -1,5 +1,5 @@
 // Everything that talks to the database. Trips live in Supabase; row-level rules decide who can read what:
-//  - trips: the friends' version of a trip, readable by its members (after 2FA)
+//  - trips: the title, dates and map tracks of a trip, readable by its members (after 2FA)
 //  - trip_private: the full version with bookings and to-dos, readable by the owner only (after 2FA)
 import { createClient, type Session } from '@supabase/supabase-js';
 import type { ImportReport, StayType, Trip } from './model.ts';
@@ -21,7 +21,7 @@ export interface TripSummary {
   cover_region: string;
   owner: boolean;
   /** How this trip came to you. */
-  role: 'owner' | 'partner' | 'friend';
+  role: 'owner' | 'partner';
 }
 export interface Bundle {
   id: string;
@@ -30,7 +30,7 @@ export interface Bundle {
   title: string;
   /** True for the owner and for travel partners: they see and edit the full version. */
   owner: boolean;
-  role?: 'owner' | 'partner' | 'friend';
+  role?: 'owner' | 'partner';
   trip: Trip;
   tracks: Tracks;
   report?: ImportReport;
@@ -72,14 +72,15 @@ export async function listTrips(session: Session): Promise<{ trips: TripSummary[
   }
   const mine = await sb.from('trip_members').select('trip_id,role').eq('user_id', uid);
   const roles = new Map<string, string>((mine.data ?? []).map((m) => [m.trip_id as string, m.role as string]));
-  const trips: TripSummary[] = (data ?? []).map((r) => ({
+  // a trip is yours (owner) or shared with you as a travel partner; there is no read-only view
+  const trips: TripSummary[] = (data ?? []).filter((r) => r.owner_id === uid || roles.get(r.id) === 'partner').map((r) => ({
     id: r.id,
     title: r.title,
     start_date: r.start_date,
     end_date: r.end_date,
     cover_region: r.cover_region ?? 'Torres del Paine',
     owner: r.owner_id === uid,
-    role: r.owner_id === uid ? 'owner' : roles.get(r.id) === 'partner' ? 'partner' : 'friend',
+    role: r.owner_id === uid ? 'owner' : 'partner',
   }));
   cachePut(uid, 'list', trips);
   return { trips, offline: false };
@@ -100,35 +101,34 @@ export async function loadTrip(session: Session, id: string): Promise<{ bundle: 
     if (cached) return { bundle: { ...cached, trip: legacyTypes(cached.trip) }, offline: true };
     throw pub.error ?? new Error('Trip not found');
   }
-  const d = pub.data.data as { trip: Trip; tracks: Tracks };
-  let role: 'owner' | 'partner' | 'friend' = 'friend';
+  const d = pub.data.data as { tracks?: Tracks };
+  let role: 'owner' | 'partner' | null = null;
   if (pub.data.owner_id === uid) role = 'owner';
   else {
     const m = await sb.from('trip_members').select('role').eq('trip_id', id).eq('user_id', uid).maybeSingle();
     if (m.data?.role === 'partner') role = 'partner';
   }
-  let bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: false, role, trip: legacyTypes(d.trip), tracks: d.tracks ?? {} };
-  if (role !== 'friend') {
-    const priv = await sb.from('trip_private').select('data').eq('trip_id', id).maybeSingle();
-    const p = priv.data?.data as { trip: Trip; report?: ImportReport; sources?: Bundle['sources'] } | undefined;
-    if (p) bundle = { ...bundle, owner: true, trip: legacyTypes(p.trip), report: p.report, sources: p.sources };
-  }
+  if (!role) throw new Error('This trip is not shared with you.');
+  const priv = await sb.from('trip_private').select('data').eq('trip_id', id).maybeSingle();
+  const p = priv.data?.data as { trip: Trip; report?: ImportReport; sources?: Bundle['sources'] } | undefined;
+  if (!p) throw priv.error ?? new Error('Trip not found');
+  const bundle: Bundle = { id, version: pub.data.version ?? 1, cover: pub.data.cover_region ?? 'Torres del Paine', title: pub.data.title, owner: true, role, trip: legacyTypes(p.trip), tracks: d.tracks ?? {}, report: p.report, sources: p.sources };
   cachePut(uid, `trip:${id}`, bundle);
   return { bundle, offline: false };
 }
 
-export async function shareTrip(tripId: string, email: string, role: 'friend' | 'partner' = 'friend'): Promise<string | null> {
-  const { error } = await sb.rpc('share_trip', { p_trip: tripId, p_email: email, p_role: role });
+export async function shareTrip(tripId: string, email: string): Promise<string | null> {
+  const { error } = await sb.rpc('share_trip', { p_trip: tripId, p_email: email, p_role: 'partner' });
   return error ? error.message : null;
 }
 export async function unshareTrip(tripId: string, email: string): Promise<string | null> {
   const { error } = await sb.rpc('unshare_trip', { p_trip: tripId, p_email: email });
   return error ? error.message : null;
 }
-export async function listMembers(tripId: string): Promise<{ email: string; role: 'friend' | 'partner' }[]> {
+export async function listMembers(tripId: string): Promise<{ email: string; role: 'partner' }[]> {
   const { data, error } = await sb.rpc('list_members', { p_trip: tripId });
   if (error) throw new Error(error.message);
-  return (data ?? []) as { email: string; role: 'friend' | 'partner' }[];
+  return (data ?? []) as { email: string; role: 'partner' }[];
 }
 
 /** The newest saved copy of a trip, for when someone else saved first. */
@@ -141,7 +141,6 @@ export async function fetchLatest(id: string): Promise<{ version: number; trip: 
   return { version: pub.data.version ?? 1, trip: (priv.data.data as { trip: Trip }).trip, tracks: d.tracks ?? {} };
 }
 
-import { publicVersion } from './privacy.ts';
 import { computeTotals } from './totals.ts';
 
 /** Save the owner's version of a trip. Returns the new version number. Throws with a readable message on failure. */
@@ -154,7 +153,7 @@ export async function saveTrip(b: Bundle, trip: Trip): Promise<number> {
     p_cover: b.cover,
     p_start: full.startDate,
     p_end: full.endDate,
-    p_public: { trip: publicVersion(full), tracks: b.tracks },
+    p_public: { tracks: b.tracks },
     p_private: { trip: full, report: b.report, sources: b.sources },
   });
   if (error) throw new Error(error.message);
@@ -189,7 +188,7 @@ export async function createTrip(title: string, cover: string, trip: Trip): Prom
     p_cover: cover,
     p_start: full.startDate,
     p_end: full.endDate,
-    p_public: { trip: publicVersion(full), tracks: {} },
+    p_public: { tracks: {} },
     p_private: { trip: full },
   });
   if (error) throw new Error(error.message);
