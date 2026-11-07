@@ -1,7 +1,8 @@
 // Bundles the viewer into dist/ (app.js, app.css, index.html). Trip data is bundled in,
 // so dist/index.html opens straight from disk with no server and works offline.
 import { build } from 'esbuild';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { headTags } from './csp.mjs';
 
 // MapLibre's worker script is inlined as text so the map also works when index.html is opened from disk.
 const workerText = {
@@ -36,6 +37,6 @@ await build({
   define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId) },
   logLevel: 'info',
 });
-copyFileSync('src/index.html', 'dist/index.html');
+writeFileSync('dist/index.html', readFileSync('src/index.html', 'utf8').replace('<!--CSP-->', headTags));
 for (const f of readdirSync('public')) copyFileSync(`public/${f}`, `dist/${f}`);
 if (existsSync('photos')) cpSync('photos', 'dist/photos', { recursive: true });

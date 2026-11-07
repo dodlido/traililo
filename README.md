@@ -53,6 +53,8 @@ will be done with purpose-made shareables (the recap and film are the first cand
 
 ## Known limits
 
+- The page carries a Content-Security-Policy (`scripts/csp.mjs`, the one list of outside services the app may contact) and sends only the site address, never the page path, to other sites. When the app starts using a new service, add it to that list or the browser will refuse the request (the console says "Refused to ...").
+
 - Ferries without a charted line stay straight; trek lines between points are straight segments.
 - Routing, place names and weather depend on public services (OSRM, Overpass, Nominatim, Open-Meteo) and can be slow or unavailable; the editors fall back to straight lines and coordinates.
 - Sharing with a travel partner (a second real account) has not yet been tested end to end.
