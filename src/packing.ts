@@ -1,7 +1,9 @@
 // A starting packing list made from what the trip contains. The owner edits it from there.
 import type { PackItem, Trip } from './model.ts';
 
-const G = { docs: 'Papers and money', wear: 'Clothes', hike: 'Hiking', tech: 'Tech', health: 'Health and care', extra: 'Extras' };
+const G = { docs: 'Papers and money', wear: 'Clothes', hike: 'Hiking', camp: 'Camping', tech: 'Tech', health: 'Health and care', extra: 'Extras' };
+/** The order the sections appear in. */
+const ORDER = Object.values(G);
 
 export function makePacking(trip: Trip): PackItem[] {
   const entries = trip.days.flatMap((d) => d.entries);
@@ -10,12 +12,18 @@ export function makePacking(trip: Trip): PackItem[] {
   const hikes = entries.filter((e) => e.kind === 'hike').length;
   const ferries = entries.some((e) => e.kind === 'commute' && e.legs.some((l) => l.mode === 'ferry'));
   const flights = entries.some((e) => e.kind === 'commute' && e.legs.some((l) => l.mode === 'flight'));
+  const legs = entries.flatMap((e) => (e.kind === 'commute' ? e.legs : []));
+  const drives = legs.some((l) => l.mode === 'drive');
+  const buses = legs.some((l) => l.mode === 'bus');
+  const longBus = legs.some((l) => l.mode === 'bus' && (l.durationMin ?? 0) >= 300);
+  // a tent, as opposed to a mountain hut with beds
+  const tent = trip.stays.some((s) => s.type === 'camp' && !/refugio|hut|hostel|cabin|lodge|dorm/i.test(s.name));
   const treks = entries.some((e) => e.kind === 'hike' && (e.durationMin ?? 0) >= 360) || trip.stays.some((s) => s.type === 'camp');
   const list: [string, string][] = [
     [G.docs, 'Passports (valid for 6+ months)'],
     [G.docs, 'Printed or offline copies of bookings'],
     [G.docs, 'Travel insurance details'],
-    [G.docs, 'Cards, plus some cash in dollars and local pesos'],
+    [G.docs, countries.size > 1 ? 'Cards, plus cash in dollars and the local pesos of each country' : 'Cards, plus some cash in dollars and local pesos'],
     [G.wear, 'Base layers (top and bottom)'],
     [G.wear, 'Warm mid-layer fleece'],
     [G.wear, 'Waterproof, windproof shell'],
@@ -39,13 +47,22 @@ export function makePacking(trip: Trip): PackItem[] {
   if (hikes) list.push([G.hike, 'Broken-in hiking boots'], [G.hike, 'Daypack, 20 to 30 litres'], [G.hike, 'Trekking poles'], [G.hike, 'A maps app with offline maps (Organic Maps or OsmAnd) and the trail files from the "Open in maps app" button']);
   if (hikes >= 8) list.push([G.hike, 'Gaiters for muddy or snowy sections']);
   if (treks) list.push([G.hike, 'Sleeping bag liner'], [G.hike, 'Earplugs for shared dorms'], [G.hike, 'Cash for refugios (cards are often not accepted)']);
-  if (countries.size > 1) list.push([G.docs, 'Border papers and a printed car-rental permit for crossings'], [G.docs, 'Small cash in both countries’ currencies']);
+  if (countries.size > 1) list.push([G.docs, drives ? 'Border papers and a printed car-rental permit for crossings' : 'Passports and printed bookings within reach for border crossings']);
   if (has(/glacier|ice trek|perito/i)) list.push([G.wear, 'Warm layer for the glacier boats and viewpoints'], [G.hike, 'Crampons are lent on glacier treks, so skip them']);
-  if (has(/thermal|hot spring|termas/i)) list.push([G.extra, 'Swimsuit and quick-dry towel']);
-  if (has(/kayak|raft|swim|lake/i)) list.push([G.extra, 'Swimsuit and water shoes'], [G.extra, 'Dry bag for the phone']);
+  const wet = has(/kayak|raft|swim|lake/i);
+  if (has(/thermal|hot spring|termas/i) || wet) list.push([G.extra, 'Swimsuit and quick-dry towel']);
+  if (wet) list.push([G.extra, 'Water shoes'], [G.extra, 'Dry bag for the phone']);
   if (has(/bike|cycl/i)) list.push([G.extra, 'Padded shorts or a seat cover for bike days'], [G.extra, 'Cycling gloves']);
   if (ferries) list.push([G.health, 'Motion-sickness tablets for the ferries']);
   if (flights) list.push([G.extra, 'Soft bag for the small domestic planes, with a strict weight limit']);
-  if (has(/drive|car rental|rent/i)) list.push([G.docs, 'Driver’s licence and an international permit'], [G.extra, 'Phone holder for the car']);
-  return list.map(([group, text], i) => ({ id: `p${i}${Math.random().toString(36).slice(2, 5)}`, group, text, done: false }));
+  if (drives) list.push([G.docs, 'Driver’s licence and an international permit'], [G.extra, 'Phone holder for the car']);
+  // no car: everything rides on buses, so the small comforts matter more
+  if (buses) list.push([G.extra, 'Snacks and water for the bus rides'], [G.tech, 'Downloaded music, podcasts or films for the bus rides']);
+  if (longBus) list.push([G.extra, 'Neck pillow and earplugs for the long bus rides'], [G.wear, 'A warm layer for cold, air-conditioned buses']);
+  if (tent) list.push([G.camp, 'Tent, sleeping mat and sleeping bag (or check what the campsite rents)'], [G.camp, 'Stove, fuel and a lighter (fuel cannot go on planes: buy it there)'], [G.camp, 'Pot, spoon and a mug'], [G.camp, 'Food for the first night, and a bag to hang or seal it'], [G.camp, 'Spare headlamp batteries']);
+  // each thing once, in sections
+  const seen = new Set<string>();
+  const unique = list.filter(([, text]) => !seen.has(text) && !!seen.add(text));
+  unique.sort((a, b) => ORDER.indexOf(a[0]) - ORDER.indexOf(b[0]));
+  return unique.map(([group, text], i) => ({ id: `p${i}${Math.random().toString(36).slice(2, 5)}`, group, text, done: false }));
 }

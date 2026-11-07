@@ -585,6 +585,7 @@ function Journey({ go, editing, setEditing, openToday }: { go: (h: string) => vo
           <a key={i} tabIndex={-1} href={`${base}/chapter/${i}`} style={{ flexGrow: run.days.length, background: themeFor(run.region).accent }} title={run.region} />
         ))}
       </div>
+      <p className="strip-note">Each colour is a place. Tap one to jump to it.</p>
 
       <section className="chapters" aria-label="Places">
         {runs.map((run, i) => {
@@ -757,7 +758,7 @@ function Stays(_: { go: (h: string) => void }) {
                 )}
                 {isCamp(s) && (
                   <span className="camp-tag">
-                    <Icon name="tent" size={15} /> Camp
+                    <Icon name="tent" size={15} /> {/refugio|hut|hostel/i.test(s.name) ? 'Mountain hut' : 'Camp'}
                   </span>
                 )}
                 {s.type === 'home' && (
@@ -769,7 +770,7 @@ function Stays(_: { go: (h: string) => void }) {
                 <p>
                   {region} · {shortDate(s.checkIn)} to {shortDate(s.checkOut)}
                 </p>
-                {s.assumed && <span className="tag">to be booked</span>}
+                {(s.assumed || s.nameIsPlaceholder || (!s.booking && s.type !== 'camp' && s.type !== 'home')) && <span className="tag warn">not booked yet</span>}
                 {s.booking?.bookedBy && <span className="tag soft">booked by {s.booking.bookedBy}</span>}
                 {s.privateNotes.map((p) => (
                   <span className="private-line" key={p}>

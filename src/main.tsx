@@ -9,6 +9,7 @@ import { loadTrip, type Bundle } from './backend.ts';
 import { COVER, Scene } from './scenes.tsx';
 import 'maplibre-gl/dist/maplibre-gl.css'; // the map's own styles; kept in the main stylesheet because lazy chunks do not bring theirs
 import './styles.css';
+import { applyTextSize } from './ui.ts';
 
 function TripLoader({ session, id, sub }: { session: Session; id: string; sub: string }) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -41,6 +42,7 @@ function Root() {
   );
 }
 
+applyTextSize();
 createRoot(document.getElementById('root')!).render(<Root />);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

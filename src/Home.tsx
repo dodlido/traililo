@@ -4,6 +4,7 @@ import { anyPending, createTrip, deleteTrip, fresh, listMembers, listTrips, shar
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { HomeSetting } from './Edit.tsx';
+import { TEXT_SIZES, setTextSize, textSize, type TextSizeId } from './ui.ts';
 import { THEMES, Scene, themeFor } from './scenes.tsx';
 import { shortDate } from './derive.ts';
 
@@ -34,6 +35,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
       {trips && trips.length === 0 && <p className="auth-note">No trips yet. Trips you’re invited to will show up here.</p>}
       <NewTrip />
       <HomeSetting />
+      <TextSizeSetting />
       <ul className="trip-list">
         {trips?.map((t) => (
           <TripCard key={t.id} t={t} session={session} onDeleted={() => setTrips((l) => (l ? l.filter((x) => x.id !== t.id) : l))} />
@@ -202,5 +204,32 @@ function NewTrip() {
         <button type="button" className="chip" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </form>
+  );
+}
+
+function TextSizeSetting() {
+  const [size, setSize] = useState<TextSizeId>(textSize());
+  return (
+    <section className="home-setting" aria-label="Text size">
+      <p>
+        <b>Text size</b>
+      </p>
+      <div className="size-row">
+        {TEXT_SIZES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={size === s.id ? 'chip is-on' : 'chip'}
+            aria-pressed={size === s.id}
+            onClick={() => {
+              setTextSize(s.id);
+              setSize(s.id);
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

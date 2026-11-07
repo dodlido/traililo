@@ -86,3 +86,19 @@ test('kmBetween: known distances, points and [lon, lat] pairs alike', async () =
   // across the date line the short way round
   assert.ok(kmBetween([179.9, 0], [-179.9, 0]) < 30);
 });
+
+test('packing: no duplicates, sectioned, and tailored to car vs bus and tent vs hut', async () => {
+  const { makePacking } = await import('../src/packing.ts');
+  const base = trip(['2027-03-01', '2027-03-02']);
+  const withLegs = (mode: string, stays = base.stays) => ({ ...base, stays, days: [{ ...base.days[0], entries: [{ id: 'e', kind: 'commute', title: 'Ride', notes: [], warnings: [], legs: [{ mode, durationMin: 400 }] }] }, base.days[1]] }) as unknown as Trip;
+  const bus = makePacking(withLegs('bus')).map((i) => i.text);
+  const car = makePacking(withLegs('drive')).map((i) => i.text);
+  assert.ok(bus.some((t) => /neck pillow/i.test(t)));
+  assert.ok(!car.some((t) => /neck pillow/i.test(t)));
+  assert.ok(car.some((t) => /driver/i.test(t)) && !bus.some((t) => /driver/i.test(t)));
+  assert.equal(new Set(bus).size, bus.length);
+  const tent = makePacking(withLegs('bus', [stay({ id: 'c', name: 'Camping Las Torres', type: 'camp', checkIn: '2027-03-01', checkOut: '2027-03-02' })])).map((i) => i.text);
+  const hut = makePacking(withLegs('bus', [stay({ id: 'h', name: 'Refugio Grey', type: 'camp', checkIn: '2027-03-01', checkOut: '2027-03-02' })])).map((i) => i.text);
+  assert.ok(tent.some((t) => /tent/i.test(t)));
+  assert.ok(!hut.some((t) => /^Tent/i.test(t)));
+});
