@@ -25,7 +25,8 @@ will be done with purpose-made shareables (the recap and film are the first cand
 - **Hand-drawn routes**: lines on the map that also appear as entries in the journey and can be edited.
 - **Place search and map fields** everywhere show the whole plan (stays, hikes, activities, travel stops, spots) as labelled dots, plus every trail and drive as lines, centred on the day being edited.
 - **Plan tab**: what to book per day, weather per region and a packing list. Weather (`weather.ts`) is the Open-Meteo forecast when a day is within about two weeks, otherwise the same dates last year; each day also shows its weather (`DayWeather.tsx`). The packing list (`packing.ts`) is generated from the trip, then you tick, add and remove items.
-- **Today mode**: while the trip is on, the journey opens on today's chapter; before it starts the home screen counts down the days (`today.ts`).
+- **Today mode**: while the trip is on, the journey opens on today's chapter and a Today panel shows the forecast, the next ride, tonight's bed and one-tap "Write today's journal" / "Add a moment"; before it starts the home screen counts down the days (`today.ts`).
+- **Plan details**: prices on places to sleep with a total per currency (never added across currencies), "Busy day" / "Long day" notes with a rest hint after three hard days in a row, a packing list tailored to buses or car and tent or hut, and vague reminders folded away. A text-size choice (Normal, Large, Extra large) is on the Home screen. The film comes in Short, Standard and Long.
 - **Home**: a "Home" kind of place to sleep whose position is set once on the account (`home.ts`), never stored in a trip.
 - **Restaurants and nights out**: `meal` and `hang` entries with time, party size and a booking.
 - **Journal entries**: add a "Journal" entry anywhere in a day, between activities (also from the gaps between entries). It holds your words and the Drive pictures you pin to it. Private to the trip's owner and partners.
@@ -69,10 +70,12 @@ will be done with purpose-made shareables (the recap and film are the first cand
 - Locations for pictures: it is not verified with real Google that the Photos picker and the Drive copy keep each picture's location. If the film's start screen says pictures were placed by time because they carry no location, journal entries are the way to fix a mismatch.
 - The film and its terrain have only been checked with test data and a software renderer, not on a real phone with real tiles; a looked-up picture location is kept for the session only; a film already playing does not re-place pictures when locations arrive late; hike tracks are not drawn in the film.
 - There is no way yet to show the trip to friends and family; see "Next steps".
+- Not done yet: a hero-picture picker for the film, a redesign of the journal entry screens, shorter cache and cleanup for the public photo bucket, and splitting the largest components. Open items are in the project task list.
 
 ## Next steps
 
 1. In Supabase, turn off new sign-ups (Authentication, Sign In / Providers, switch off "Allow new users to sign up"). The app only signs in; accounts, including a travel partner's, are created by you under Authentication, Users.
+1. Open the live site once and try Google sign-in, Gmail import and the Photos picker (the Content-Security-Policy could block one), then make an edit in airplane mode on your phone and watch it upload when the signal returns.
 1. Create two test accounts and check travel-partner sharing end to end.
 2. Verify on a phone: the "Open in maps app" share sheet with the chosen maps app, real map tiles, weather, the live routing services, and the film on real terrain.
 3. Check with real Google whether the pictures keep their location, and keep an eye on the film's speed on older phones.

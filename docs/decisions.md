@@ -15,3 +15,14 @@
 **What changed.** `privacy.ts`, the friend role, the "Your view" preview, the per-day "show to friends" journal tick and the "Friends see these" hints are gone. Saves store only the map tracks in `trips.data`. `supabase/migration-5.sql` removes existing friend memberships, clears the old friends' copy from `trips.data` and leaves `partner` as the only role.
 
 **What replaces it.** Shareables, designed one by one, each with an explicit list of what it contains (nothing is "everything except"). First candidates: the recap or film as a link or file, a picture or short summary of a day, a printable itinerary. An allowlist, not a filter, is the rule for any of them.
+
+
+## 2026-11-07: Offline edits are kept on the phone, and the app is split into pieces
+
+**Offline edits.** With no signal, an edit is applied on screen and the whole trip, plus the saved version it was built on, is kept on the phone. It uploads when the signal returns, when the app comes to the front, or every 30 seconds. If the database says the trip changed on another device meanwhile, editing pauses and the owner chooses which version to keep (with a way to save theirs as a file first). Chosen over merging because a trip is saved as one whole and two phones editing offline at once is rare; a wrong silent merge would be worse than one clear question. Signing out deletes everything on the phone, and warns first if something is unsent; a session that ends by itself keeps only unsent edits so a journal entry is never lost silently.
+
+**Speed.** Database calls give up after 8 seconds and the phone's copy opens; the service worker does the same for the app after 4 seconds. The build splits the map, film, booking import and editor maps into pieces fetched on first use, and the service worker precaches all of them, so the first download is about 600 KB and nothing needs a connection afterwards.
+
+**Trip shape.** Every trip carries a `schemaVersion` and goes through `migrate()` wherever it is read, so older or damaged trips never reach a screen in a shape it does not expect. Raise `SCHEMA` and add a step when the shape changes.
+
+**Privacy.** Home positions are rounded before they go to routing (about 1 km) or weather (about 10 km). The Content-Security-Policy is a single list in `scripts/csp.mjs`.
