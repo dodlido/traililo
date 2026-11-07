@@ -790,3 +790,8 @@ html[data-map-base='west'] .map .pin.stay.camp .disc { border-radius: 50% 50% 4p
 .moment-pics button:disabled { opacity: 0.35; }
 .moment-pics img, .moment-pics .recap-blank { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .moment-pics span { position: absolute; left: 4px; bottom: 3px; font-size: 11px; padding: 0 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; }
+
+.sync-bar { position: sticky; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; font-size: 14px; background: color-mix(in srgb, var(--amber) 16%, var(--ink-2)); color: var(--amber); }
+.sync-bar.bad { background: #4a2020; color: #ffd0d0; }
+.sync-bar > span { flex: 1 1 220px; min-width: 0; }
+.sync-actions { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Session } from '@supabase/supabase-js';
 import { TripApp } from './App.tsx';
+import { ErrorBoundary } from './ErrorBoundary.tsx';
 import { Gate } from './Gate.tsx';
 import { Home } from './Home.tsx';
 import { loadTrip, type Bundle } from './backend.ts';
@@ -28,12 +29,14 @@ function Root() {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   return (
+    <ErrorBoundary resetKey={hash}>
     <Gate>
       {(session, signOut) => {
         const m = /^#\/trip\/([0-9a-fA-F-]{36})(\/.*)?$/.exec(hash);
         return m ? <TripLoader session={session} id={m[1]} sub={m[2] ?? ''} /> : <Home session={session} signOut={signOut} />;
       }}
     </Gate>
+    </ErrorBoundary>
   );
 }
 

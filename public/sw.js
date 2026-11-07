@@ -1,5 +1,5 @@
 // The app itself is cached on first visit so it still opens with a weak signal. Map tiles are not stored.
-const APP = 'traililo-app-v4';
+const APP = 'traililo-app-v5';
 const PHOTOS = 'traililo-photos-v1';
 const SHELL = ['./', './index.html', './app.js', './app.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
@@ -42,13 +42,21 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
-  // the app: network first so updates arrive, cache when offline
+  // the app: network first so updates arrive; on a weak signal (no answer in 4 s) the saved copy opens instead
   e.respondWith(
-    fetch(req, { cache: 'no-cache' })
-      .then((r) => {
-        if (r.ok) caches.open(APP).then((c) => c.put(req, r.clone()));
-        return r;
-      })
-      .catch(() => caches.match(req).then((m) => m || caches.match('./index.html'))),
+    new Promise((resolve) => {
+      const saved = () => caches.match(req).then((m) => m || caches.match('./index.html'));
+      const timer = setTimeout(() => saved().then((m) => m && resolve(m)), 4000);
+      fetch(req, { cache: 'no-cache' })
+        .then((r) => {
+          clearTimeout(timer);
+          if (r.ok) caches.open(APP).then((c) => c.put(req, r.clone()));
+          resolve(r);
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          saved().then((m) => resolve(m || Response.error()));
+        });
+    }),
   );
 });

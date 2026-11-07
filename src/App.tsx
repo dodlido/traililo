@@ -25,7 +25,10 @@ import { DayWeather } from './DayWeather.tsx';
 import { PlanCtx } from './Pick.tsx';
 import { ImportBookings } from './ImportBookings.tsx';
 import { AddDayEditor, AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
-import { fetchLatest, fresh, saveTrip } from './backend.ts';
+import { fetchLatest, fresh, isNetworkError, pendingClear, pendingPut, saveTrip } from './backend.ts';
+import { SyncBar, type SyncState } from './SyncBar.tsx';
+import { same } from './same.ts';
+import { SCHEMA } from './migrate.ts';
 import { applyRoutes, roadJobs, routeJob } from './autoroute.ts';
 import { computeTotals } from './totals.ts';
 import { THEMES } from './scenes.tsx';
@@ -75,13 +78,21 @@ const useDesktop = () => {
 };
 
 export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; sub: string }) {
-  const [rawTrip, setTrip] = useState(bundle.trip);
+  // changes made on this phone that never reached the database come back first, and are uploaded as soon as there is signal
+  const kept = bundle.pending;
+  const [rawTrip, setTrip] = useState(kept ? kept.trip : bundle.trip);
   // the owner sees "Home" where the account says home is; what is saved never carries that position
   const home = useHome();
   const trip = useMemo(() => (bundle.owner ? withHome(rawTrip, home) : rawTrip), [rawTrip, home]);
   const tripRef = useRef(rawTrip);
-  const versionRef = useRef(bundle.version);
-  const [tracks, setTracks] = useState(bundle.tracks);
+  const versionRef = useRef(kept ? kept.base : bundle.version);
+  const [sync, setSyncState] = useState<SyncState>(kept ? 'pending' : 'ok');
+  const syncRef = useRef<SyncState>(sync);
+  const setSync = (s: SyncState) => {
+    syncRef.current = s;
+    setSyncState(s);
+  };
+  const [tracks, setTracks] = useState(kept ? kept.tracks : bundle.tracks);
   const tracksRef = useRef(tracks);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const [editing, setEditing] = useState(() => bundle.owner && fresh.id === bundle.id);
@@ -91,15 +102,33 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     if (!sheet) setDropped(null);
   }, [sheet]);
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [title, setTitle] = useState(bundle.title);
-  const [cover, setCover] = useState(bundle.cover);
+  const [title, setTitle] = useState(kept ? kept.title : bundle.title);
+  const [cover, setCover] = useState(kept ? kept.cover : bundle.cover);
+  const sheetRef = useRef(sheet);
+  sheetRef.current = sheet;
+  const titleRef = useRef(title);
+  titleRef.current = title;
+  const coverRef = useRef(cover);
+  coverRef.current = cover;
   const flash = (text: string, bad?: boolean) => {
     setToast({ text, bad });
     window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), bad ? 6000 : 1800);
   };
-  // Every change is applied to a copy, shown at once, and saved; if the save fails the change is undone.
+  // What goes to the database for the trip as it is now.
+  const send = (t: Trip, meta?: { title: string; cover: string }) =>
+    saveTrip({ ...bundle, tracks: tracksRef.current, title: meta?.title ?? titleRef.current, cover: meta?.cover ?? coverRef.current, version: versionRef.current }, t);
+  // Keeps the trip on this phone until it has been uploaded.
+  const keepHere = (t: Trip, meta?: { title: string; cover: string }) =>
+    pendingPut(bundle.id, { base: versionRef.current, trip: t, tracks: tracksRef.current, title: meta?.title ?? titleRef.current, cover: meta?.cover ?? coverRef.current, at: new Date().toISOString() });
+  // Every change is applied to a copy, shown at once, and saved. With no signal it is kept on this phone and uploaded later;
+  // if the database refuses it, the change is undone.
   const commit = (fn: (t: Trip) => void, meta?: { title: string; cover: string }) => {
     const run = async () => {
+      if (syncRef.current === 'conflict') {
+        const m = 'This trip was changed on another device. Choose which version to keep (the bar at the top) before editing.';
+        flash(m, true);
+        throw new Error(m);
+      }
       const before = tripRef.current;
       const next = structuredClone(before);
       fn(next);
@@ -108,14 +137,31 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       tripRef.current = next;
       setTrip(next);
       try {
-        versionRef.current = await saveTrip({ ...bundle, tracks: tracksRef.current, title: meta?.title ?? title, cover: meta?.cover ?? cover, version: versionRef.current }, next);
+        versionRef.current = await send(next, meta);
+        pendingClear(bundle.id);
+        if (syncRef.current !== 'ok') setSync('ok');
         flash('Saved');
       } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not save';
+        const offline = isNetworkError(e);
+        const clash = /changed on another device/.test(msg);
+        if (offline || (clash && syncRef.current === 'pending')) {
+          // keep the change here: no signal (upload later), or earlier unsent changes now clash with another device (choose which to keep)
+          if (keepHere(next, meta)) {
+            setSync(offline ? 'pending' : 'conflict');
+            flash(offline ? 'No signal. Saved on this phone, it uploads when you are back online.' : 'Saved on this phone, but the trip was also changed on another device. Choose a version at the top.', !offline);
+            return;
+          }
+          tripRef.current = before;
+          setTrip(before);
+          const m = 'No signal, and this phone has no room to keep the change. Try again with a connection.';
+          flash(m, true);
+          throw new Error(m);
+        }
         tripRef.current = before;
         setTrip(before);
-        const msg = e instanceof Error ? e.message : 'Could not save';
         // someone else saved first: take their version, so the next edit starts from it
-        if (/changed on another device/.test(msg)) {
+        if (clash) {
           try {
             const l = await fetchLatest(bundle.id);
             versionRef.current = l.version;
@@ -136,6 +182,97 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     const p = queue.current.then(run, run);
     queue.current = p.catch(() => {});
     return p as Promise<void>;
+  };
+  // Uploads what was kept on this phone. Called when the signal returns, when the app comes back to the front, and every 30 s.
+  const flush = () => {
+    queue.current = queue.current
+      .then(async () => {
+        if (syncRef.current !== 'pending') return;
+        const mine = tripRef.current;
+        try {
+          versionRef.current = await send(mine);
+          pendingClear(bundle.id);
+          setSync('ok');
+          flash('Synced');
+        } catch (e) {
+          if (isNetworkError(e)) return;
+          const msg = e instanceof Error ? e.message : '';
+          if (/changed on another device/.test(msg)) {
+            // either someone else saved, or an earlier try went through after we gave up waiting for the answer
+            try {
+              const l = await fetchLatest(bundle.id);
+              if (same(l.trip, { ...mine, totals: computeTotals(mine), schemaVersion: SCHEMA })) {
+                versionRef.current = l.version;
+                pendingClear(bundle.id);
+                setSync('ok');
+              } else setSync('conflict');
+            } catch {
+              /* try again later */
+            }
+            return;
+          }
+          flash(msg || 'Could not upload your changes.', true);
+        }
+      })
+      .catch(() => {});
+  };
+  // When the app comes back to the front, take in what the other phone saved meanwhile (not while you are editing).
+  const lastLook = useRef(0);
+  const refresh = () => {
+    if (Date.now() - lastLook.current < 20000) return;
+    lastLook.current = Date.now();
+    queue.current = queue.current
+      .then(async () => {
+        if (syncRef.current !== 'ok' || sheetRef.current || !navigator.onLine) return;
+        const l = await fetchLatest(bundle.id).catch(() => null);
+        if (!l || l.version <= versionRef.current) return;
+        versionRef.current = l.version;
+        tripRef.current = l.trip;
+        tracksRef.current = l.tracks;
+        setTrip(l.trip);
+        setTracks(l.tracks);
+        flash('Updated with changes saved on another device');
+      })
+      .catch(() => {});
+  };
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const online = () => flushRef.current();
+    const seen = () => {
+      if (document.visibilityState !== 'visible') return;
+      flushRef.current();
+      refreshRef.current();
+    };
+    window.addEventListener('online', online);
+    document.addEventListener('visibilitychange', seen);
+    const timer = window.setInterval(online, 30000);
+    online();
+    return () => {
+      window.removeEventListener('online', online);
+      document.removeEventListener('visibilitychange', seen);
+      window.clearInterval(timer);
+    };
+  }, []);
+  // reconciling after a clash: keep what is on this phone (it replaces the other device's version) or take theirs
+  const keepMine = async () => {
+    const l = await fetchLatest(bundle.id);
+    versionRef.current = l.version;
+    setSync('pending');
+    flushRef.current();
+  };
+  const useTheirs = async () => {
+    const l = await fetchLatest(bundle.id);
+    versionRef.current = l.version;
+    tripRef.current = l.trip;
+    tracksRef.current = l.tracks;
+    setTrip(l.trip);
+    setTracks(l.tracks);
+    pendingClear(bundle.id);
+    setSync('ok');
+    flash('Showing the other device’s version');
   };
   // a drawn trail for a hike: kept with the trip, saved with it, and undone if the save fails
   const setTrack = async (id: string, track: Tracks[string] | null, gain?: number, mode: 'file' | 'fill' = 'fill') => {
@@ -294,6 +431,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     <div className={`shell`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
         <div className="page" ref={page}>
+          <SyncBar state={sync} onRetry={() => flushRef.current()} onKeepMine={keepMine} onUseTheirs={useTheirs} onSaveFile={() => void exportTrip(title, tripRef.current, tracksRef.current).then((m) => m && flash(m))} />
           {route.tab === 'journey' && route.chapter === null && <Journey go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
           {route.tab === 'recap' && <RecapView trip={trip} title={title} canEdit mutate={commit} go={go} />}

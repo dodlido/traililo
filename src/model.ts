@@ -263,6 +263,8 @@ export interface Trip {
   packing?: PackItem[];
   /** Highlights in the recap that the owner chose to leave out (their keys). */
   recapHidden?: string[];
+  /** Which version of the app saved this trip; see migrate.ts. */
+  schemaVersion?: number;
   totals: TripTotals;
 }
 

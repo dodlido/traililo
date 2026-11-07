@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { createTrip, deleteTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
+import { anyPending, createTrip, deleteTrip, fresh, listMembers, listTrips, shareTrip, unshareTrip, type TripSummary } from './backend.ts';
 import type { Day, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { HomeSetting } from './Edit.tsx';
@@ -11,6 +11,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
   const [trips, setTrips] = useState<TripSummary[] | null>(null);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
   useEffect(() => {
     listTrips(session)
       .then((r) => {
@@ -24,10 +25,11 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
     <div className="home">
       <header className="home-head">
         <span className="wordmark">TraiLilo</span>
-        <button type="button" className="chip" onClick={signOut}>Sign out</button>
+        <button type="button" className="chip" onClick={() => (leaving || !anyPending() ? signOut() : setLeaving(true))}>{leaving ? 'Sign out and lose them' : 'Sign out'}</button>
       </header>
       <h1 className="home-title">Your trips</h1>
       {offline && <p className="offline-note">You’re offline. Showing what’s saved on this phone.</p>}
+      {leaving && <p className="offline-note">Some changes on this phone have not been uploaded yet (there was no signal). Open the trip with a connection and they upload by themselves. Signing out now deletes them.</p>}
       {error && <p className="auth-error">{error}</p>}
       {trips && trips.length === 0 && <p className="auth-note">No trips yet. Trips you’re invited to will show up here.</p>}
       <NewTrip />
