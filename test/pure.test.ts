@@ -26,7 +26,8 @@ test('migrate fills lists and renames old stay types, and is idempotent', () => 
   assert.equal(m.stays[0].type, 'hotel');
   assert.deepEqual(m.stays[0].privateNotes, []);
   assert.equal(migrate(m), m);
-  assert.deepEqual(migrate({ ...old, days: undefined, stays: undefined } as unknown as Trip).days, []);
+  // a trip with no days at all gets one, so no screen meets an empty list
+  assert.equal(migrate({ ...old, days: [], stays: undefined } as unknown as Trip).days[0].date, '2027-01-01');
 });
 
 test('a booking for one night inside a longer stay does not shrink it (C1)', () => {

@@ -30,6 +30,8 @@ const dayNumber = (iso: string) => Math.floor(Date.parse(iso + 'T00:00:00Z') / 8
 
 export function whereIsToday(trip: Trip, date = todayDate()): Today {
   const total = trip.days.length;
+  // a trip with no days has nothing to count down to or through
+  if (!total) return { date, total: 0, daysTo: 0, daysSince: 0, state: 'before', idx: 0, n: 0 };
   const first = trip.days[0].date;
   const last = trip.days[total - 1].date;
   const base = { date, total, daysTo: Math.max(0, dayNumber(first) - dayNumber(date)), daysSince: Math.max(0, dayNumber(date) - dayNumber(last)) };

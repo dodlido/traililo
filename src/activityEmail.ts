@@ -54,6 +54,8 @@ const addMinutes = (t: string, min: number) => {
 };
 
 const CLOCK = String.raw`(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)?`;
+// a date as written in these emails: "March 16, 2027" or "16 March 2027"
+const DATE_TXT = String.raw`(?:[A-Za-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2}(?:st|nd|rd|th)? [A-Za-z]{3,9}\.?,? \d{4})`;
 const REF = /\bGYG[A-Z0-9]{9,12}\b/;
 
 /** Plain, single-spaced text: link targets, table bars, heading marks and emoji removed. */
@@ -87,7 +89,7 @@ export function parseGetYourGuide(input: string): ActivityBooking {
   if (pin) out.pin = pin;
 
   // ---- the GetYourGuide confirmation: "March 16, 2027 at 10:30 AM <tour> 2 Adults (Age 18 - 50) • English • 7.5 hours"
-  const head = text.match(new RegExp(String.raw`([A-Za-z]{3,9}\.? \d{1,2}, \d{4})\s+at\s+${CLOCK}\s+(.+?)\s+(\d+\s+(?:Adults?|Children|Child|Participants?|Persons?|People|Travell?ers?|Guests?)\b[^•]*?)(?:\s*•|$)`, 'i'));
+  const head = text.match(new RegExp(String.raw`(${DATE_TXT})\s+at\s+${CLOCK}\s+(.+?)\s+(\d+\s+(?:Adults?|Children|Child|Participants?|Persons?|People|Travell?ers?|Guests?)\b[^•]*?)(?:\s*•|$)`, 'i'));
   if (head) {
     out.date = findDates(head[1])[0]?.iso ?? '';
     out.startTime = clock(head[2], head[3], head[4]);
@@ -102,7 +104,7 @@ export function parseGetYourGuide(input: string): ActivityBooking {
   const tour = text.match(/\bTour:\s*(.+?)\s+(?:Date:|Passengers:)/i)?.[1];
   if (tour && !out.title) out.title = trimEnd(tour);
   if (!out.date) {
-    const dt = text.match(/\bDate:\s*([A-Za-z]{3,9}\.? \d{1,2},? \d{4})/i)?.[1];
+    const dt = text.match(new RegExp(String.raw`\bDate:\s*(${DATE_TXT})`, 'i'))?.[1];
     if (dt) out.date = findDates(dt)[0]?.iso ?? '';
   }
   const pax = text.match(/\bPassengers?:\s*(\d+)/i)?.[1];
@@ -139,7 +141,7 @@ export function parseGetYourGuide(input: string): ActivityBooking {
   if (phone) out.providerPhone = phone.replace(/\s+/g, ' ').trim();
 
   // ---- cancelling
-  const c = text.match(new RegExp(String.raw`Cancel before\s+${CLOCK}\s+on\s+([A-Za-z]{3,9}\.? \d{1,2}, \d{4})`, 'i'));
+  const c = text.match(new RegExp(String.raw`Cancel before\s+${CLOCK}\s+on\s+(${DATE_TXT})`, 'i'));
   if (c) {
     const d = findDates(c[4])[0]?.iso;
     if (d) out.cancelUntil = `${plain(d)} ${clock(c[1], c[2], c[3])}`;

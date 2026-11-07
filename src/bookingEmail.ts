@@ -121,6 +121,7 @@ function tidyName(s: string): string | undefined {
     .replace(/^["“'‘]+|["”'’.:]+$/g, '')
     .trim();
   if (n.length < 2 || n.length > 100 || /^\d+$/.test(n) || findDates(n).length) return undefined;
+  if (/\b\d{1,2}[:.]\d{2}\b/.test(n) || /^(?:from|until|till|after|before|between|by)\s+\d/i.test(n)) return undefined; // a time line ("From 14:00 until 23:00"), not a name
   return n;
 }
 
@@ -140,7 +141,23 @@ function looksLikeAirbnb(text: string): boolean {
   return /\bairbnb\b/i.test(text) && /confirmation code|hosted by|you.?re all set for|check-?in\s+check-?out/i.test(text);
 }
 
-function parseAirbnb(text: string, lines: string[]): EmailBooking {
+/** Dates written without a year ("Mar 15", "15 Mar"), each placed in the next year it falls on or after `now` (a few weeks of slack for a booking already under way). */
+function yearless(s: string, now: Date): Found[] {
+  const out: Found[] = [];
+  const floor = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+  const y0 = now.getUTCFullYear();
+  const place = (m: RegExpMatchArray, mon: number, day: number) => {
+    if (!mon) return;
+    let d = iso(y0, mon, day);
+    if (d && d < floor) d = iso(y0 + 1, mon, day);
+    if (d) out.push({ iso: d, start: m.index!, end: m.index! + m[0].length });
+  };
+  for (const m of s.matchAll(/\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?!\s*[:.]\d)(?!,?\s*\d{4})/g)) place(m, monthNum(m[1]), +m[2]);
+  for (const m of s.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\b(?!\.?,?\s*\d{4})/g)) place(m, monthNum(m[2]), +m[1]);
+  return out.sort((a, b) => a.start - b.start);
+}
+
+function parseAirbnb(text: string, lines: string[], now: Date): EmailBooking {
   const warnings: string[] = [];
   const out: EmailBooking = { source: 'airbnb', warnings };
 
@@ -157,7 +174,15 @@ function parseAirbnb(text: string, lines: string[]): EmailBooking {
   const from = head >= 0 ? head : text.search(/check[\s-]?in/i);
   if (from >= 0) {
     const block = text.slice(from, from + 420);
-    const ds = findDates(block);
+    let ds = findDates(block);
+    if (ds.length < 2) {
+      // "Fri, Mar 15" with no year: take the next time that date comes round, and say so
+      const bare = yearless(block, now);
+      if (bare.length >= 2) {
+        ds = bare;
+        warnings.push(`The email gives no year. I took ${plain(bare[0].iso)} to ${plain(bare[1].iso)}, the next time those dates come round. Check them.`);
+      }
+    }
     if (ds[0]) out.checkIn = ds[0].iso;
     if (ds[1]) out.checkOut = ds[1].iso;
     const stop = block.search(/\b(?:address|guests)\b/i);
@@ -223,10 +248,11 @@ function parseAirbnb(text: string, lines: string[]): EmailBooking {
   return out;
 }
 
-export function parseBookingEmail(input: string): EmailBooking {
+/** `now` only matters for emails that print dates without a year. */
+export function parseBookingEmail(input: string, now: Date = new Date()): EmailBooking {
   const text = clean(input);
   const lines = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  if (looksLikeAirbnb(text)) return parseAirbnb(text, lines);
+  if (looksLikeAirbnb(text)) return parseAirbnb(text, lines, now);
   const warnings: string[] = [];
   const out: EmailBooking = { warnings };
 

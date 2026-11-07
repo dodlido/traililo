@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { NEEDS_NEW_PASSWORD, clearCache, sb } from './backend.ts';
+import { disconnectDrive } from './drive.ts';
+import { disconnect as disconnectGmail } from './gmail.ts';
 import { configured } from './config.ts';
 import { COVER, Scene } from './scenes.tsx';
+
+/** Forgets everything private kept on this phone: saved trips, pictures, and the Google access (cancelled with Google). */
+function endSession(chosen: boolean) {
+  clearCache(!chosen);
+  void disconnectDrive().catch(() => {});
+  void disconnectGmail().catch(() => {});
+}
 
 type Stage = 'loading' | 'login' | 'setpw' | 'enroll' | 'verify' | 'ready';
 
@@ -28,6 +37,8 @@ export function Gate({ children }: { children: (session: Session, signOut: () =>
     sb.auth.getSession().then(({ data }) => decide(data.session));
     const { data } = sb.auth.onAuthStateChange((event, s) => {
       if (event === 'PASSWORD_RECOVERY') mustSetPassword.current = true;
+      // however the session ended (Sign out, expired, ended from another device), nothing stays behind on this phone
+      if (event === 'SIGNED_OUT') endSession(false);
       // refreshing a token must not bounce someone out of a screen they are in the middle of
       if (event === 'TOKEN_REFRESHED' && s) return setSession(s);
       setTimeout(() => decide(s), 0);
@@ -37,7 +48,7 @@ export function Gate({ children }: { children: (session: Session, signOut: () =>
   }, []);
 
   const signOut = async () => {
-    clearCache();
+    endSession(true);
     await sb.auth.signOut();
   };
 

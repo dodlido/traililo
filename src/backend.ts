@@ -125,21 +125,31 @@ export function anyPending(): boolean {
   }
 }
 
-/** Forget the trips kept on this device (used when signing out). */
-export function clearCache() {
+/** Forget the trips kept on this device (used when signing out). Changes not uploaded yet can be kept, so a session that
+ *  ended by itself does not throw away a journal entry. */
+export function clearCache(keepUnsent = false) {
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith('traililo:')) localStorage.removeItem(k);
+    for (const k of Object.keys(localStorage)) if ((k.startsWith('traililo:') || k.startsWith('tl.')) && !(keepUnsent && k.startsWith('traililo:pending:'))) localStorage.removeItem(k);
+    sessionStorage.clear();
   } catch {
     /* ignore */
   }
+  // pictures kept for offline viewing
+  try {
+    void caches?.keys().then((ks) => ks.filter((k) => k.startsWith('traililo-photos')).forEach((k) => void caches.delete(k)));
+  } catch {
+    /* no cache storage here */
+  }
 }
+/** True when the server answered that this account may not see the trip (as opposed to there being no connection). */
+const refused = (e: unknown) => !isNetworkError(e) && !/jwt|expired/i.test((e as Error)?.message ?? '') && (e as { code?: string })?.code !== 'PGRST301';
 
 export async function listTrips(session: Session): Promise<{ trips: TripSummary[]; offline: boolean }> {
   const uid = session.user.id;
   const got = await withTimeout(sb.from('trips').select('id,title,start_date,end_date,cover_region,owner_id').order('start_date', { ascending: false })).catch((e: unknown) => ({ data: null, error: e as Error }));
   const { data, error } = got;
   if (error) {
-    const cached = cacheGet<TripSummary[]>(uid, 'list');
+    const cached = refused(error) ? null : cacheGet<TripSummary[]>(uid, 'list');
     if (cached) return { trips: cached, offline: true };
     throw error;
   }
@@ -156,6 +166,16 @@ export async function listTrips(session: Session): Promise<{ trips: TripSummary[
     role: r.owner_id === uid ? 'owner' : 'partner',
   }));
   cachePut(uid, 'list', trips);
+  // a trip you can no longer open (access removed) is also forgotten on this phone
+  const ids = new Set(trips.map((t) => t.id));
+  try {
+    for (const k of Object.keys(localStorage)) {
+      const m = k.startsWith(cacheKey(uid, 'trip:')) ? k.slice(cacheKey(uid, 'trip:').length) : '';
+      if (m && !ids.has(m) && !pendingGet(m)) localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
   return { trips, offline: false };
 }
 
@@ -187,7 +207,16 @@ export async function loadTrip(session: Session, id: string): Promise<{ bundle: 
     return { bundle: { ...bundle, pending: pendingGet(id) ?? undefined }, offline: false };
   } catch (e) {
     // no answer, or too slow: open the copy kept on this phone instead
-    const kept = isNetworkError(e) || (e as { code?: string })?.code === 'PGRST301' ? fromPhone(uid, id) : null;
+    if (refused(e)) {
+      // access was removed (or the trip is gone): do not keep serving the copy from this phone
+      try {
+        localStorage.removeItem(cacheKey(uid, `trip:${id}`));
+      } catch {
+        /* ignore */
+      }
+      throw e;
+    }
+    const kept = fromPhone(uid, id);
     if (kept) return { bundle: kept, offline: true };
     throw e;
   }

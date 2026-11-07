@@ -80,11 +80,14 @@ export function parseGpx(text: string, fallbackName: string): ParsedTrack {
         base = s.ele;
       } else if (base - s.ele >= 3) base = s.ele;
     }
+    // a very long recording (hundreds of thousands of points) is thinned first so simplifying it does not freeze the phone
+    const stride = Math.ceil(pts.length / 20000);
+    const thin = stride > 1 ? pts.filter((_, i) => i % stride === 0 || i === pts.length - 1) : pts;
     let eps = 0.00003;
-    let out = simplify(pts, eps);
+    let out = simplify(thin, eps);
     while (out.length > 1500 && eps < 0.001) {
       eps *= 1.6;
-      out = simplify(pts, eps);
+      out = simplify(thin, eps);
     }
     lines.push(out.map(([x, y]) => [Math.round(x * 1e5) / 1e5, Math.round(y * 1e5) / 1e5]));
   }
