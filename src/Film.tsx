@@ -11,6 +11,7 @@ import { connectDrive, driveAvailable, driveConnected, locateInDrive, pictureSrc
 import { Icon } from './Icon.tsx';
 import { Pic } from './Pic.tsx';
 import { countryName, longDate, monthShort, dayOfMonth, shortDate, weekday } from './derive.ts';
+import { useDialog } from './dialog.ts';
 import type { Feature, FeatureCollection, LineString } from 'geojson';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
@@ -119,6 +120,7 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
 
   const box = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
+  useDialog(root);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const filmRef = useRef<Film>(film);
   const t = useRef(0);
@@ -646,7 +648,7 @@ export function RecapFilm({ trip, title, upTo, onClose }: { trip: Trip; title: s
   const shotIdx = view.shots ? view.shots.split(',').map(Number) : [];
 
   return createPortal(
-    <div ref={root} className={`film${playing ? '' : ' is-paused'}${started ? ' is-started' : ''} kind-${s?.kind ?? 'title'}`} role="dialog" aria-label={`${title}, the journey`} style={{ ['--speed' as string]: speed, ['--dur' as string]: `${s?.dur ?? 2000}ms` }}>
+    <div ref={root} tabIndex={-1} className={`film${playing ? '' : ' is-paused'}${started ? ' is-started' : ''} kind-${s?.kind ?? 'title'}`} role="dialog" aria-label={`${title}, the journey`} style={{ ['--speed' as string]: speed, ['--dur' as string]: `${s?.dur ?? 2000}ms` }}>
       <div className="film-map" ref={box} />
       <div className="film-shade" aria-hidden="true" />
       {mapFailed && (

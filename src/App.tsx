@@ -4,12 +4,12 @@ import { deletePhoto, photoUrlOf, uploadPhoto } from './backend.ts';
 import { shrink } from './image.ts';
 import { parseGpx } from './gpx.ts';
 import { OpenTrail } from './OpenTrail.tsx';
-import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, createContext, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, ImportReport, Leg, Link, MealEntry, Stay, Trip } from './model.ts';
 import { RecapView } from './Recap.tsx';
 import { DriveGap } from './DriveGap.tsx';
 import { stripHome, useHome, withHome } from './home.ts';
-import { MapView, type Focus, type MapEdit, type Tracks } from './MapView.tsx';
+import type { Focus, MapEdit, Tracks } from './MapView.tsx';
 import { nameSpot } from './geocode.ts';
 import { exportTrip } from './exportTrip.ts';
 import { Icon, modeIcon } from './Icon.tsx';
@@ -23,7 +23,9 @@ import { driveConnected } from './drive.ts';
 import { LineEditor, LineRow } from './Line.tsx';
 import { DayWeather } from './DayWeather.tsx';
 import { PlanCtx } from './Pick.tsx';
-import { ImportBookings } from './ImportBookings.tsx';
+// big and not needed on the first screen: fetched when first shown
+const MapView = lazy(() => import('./MapView.tsx').then((m) => ({ default: m.MapView })));
+const ImportBookings = lazy(() => import('./ImportBookings.tsx').then((m) => ({ default: m.ImportBookings })));
 import { AddDayEditor, AddMenu, DayEditor, EntryEditor, SettingsEditor, StayEditor, type SheetState } from './Edit.tsx';
 import { fetchLatest, fresh, isNetworkError, pendingClear, pendingPut, saveTrip } from './backend.ts';
 import { SyncBar, type SyncState } from './SyncBar.tsx';
@@ -122,7 +124,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     pendingPut(bundle.id, { base: versionRef.current, trip: t, tracks: tracksRef.current, title: meta?.title ?? titleRef.current, cover: meta?.cover ?? coverRef.current, at: new Date().toISOString() });
   // Every change is applied to a copy, shown at once, and saved. With no signal it is kept on this phone and uploaded later;
   // if the database refuses it, the change is undone.
-  const commit = (fn: (t: Trip) => void, meta?: { title: string; cover: string }) => {
+  const commit = (fn: (t: Trip) => void, meta?: { title: string; cover: string }, quiet = false) => {
     const run = async () => {
       if (syncRef.current === 'conflict') {
         const m = 'This trip was changed on another device. Choose which version to keep (the bar at the top) before editing.';
@@ -140,7 +142,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
         versionRef.current = await send(next, meta);
         pendingClear(bundle.id);
         if (syncRef.current !== 'ok') setSync('ok');
-        flash('Saved');
+        if (!quiet) flash('Saved'); // a change the app made by itself (drawing roads) does not announce itself
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not save';
         const offline = isNetworkError(e);
@@ -330,7 +332,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
         }
         await new Promise((r) => setTimeout(r, 350));
       }
-      if (found.length) await commit((t) => applyRoutes(t, found)).catch(() => {});
+      if (found.length) await commit((t) => applyRoutes(t, found), undefined, true).catch(() => {});
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -412,6 +414,8 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
   const labelFor = useMemo(() => (d: Day) => (d.stayId ? staysById.get(d.stayId)?.name : undefined) ?? d.region, []);
   const theme = themeFor(activeDay.region);
   const mapVisible = desktop || route.tab === 'map';
+  const [mapShown, setMapShown] = useState(mapVisible);
+  if (mapVisible && !mapShown) setMapShown(true);
   const showOnMap = (id: string) => {
     setActive(id.slice(0, 10));
     setFocus({ id, n: Date.now() });
@@ -430,7 +434,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
     <TodayCtx.Provider value={today}>
     <div className={`shell`} data-tab={route.tab} style={{ ['--accent' as string]: theme.accent }}>
       <section className="pane">
-        <div className="page" ref={page}>
+        <main className="page" ref={page}>
           <SyncBar state={sync} onRetry={() => flushRef.current()} onKeepMine={keepMine} onUseTheirs={useTheirs} onSaveFile={() => void exportTrip(title, tripRef.current, tracksRef.current).then((m) => m && flash(m))} />
           {route.tab === 'journey' && route.chapter === null && <Journey go={go} editing={editing} setEditing={setEditing} openToday={openToday} />}
           {route.tab === 'journey' && route.chapter !== null && <Chapter idx={route.chapter} active={active} go={go} showOnMap={() => go('map')} desktop={desktop} />}
@@ -438,7 +442,7 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
           {route.tab === 'stays' && <Stays go={go} />}
           {route.tab === 'plan' && <Plan trip={trip} mutate={commit} openDay={openDay} base={base} />}
           {route.tab === 'map' && !desktop && <div className="page-spacer" />}
-        </div>
+        </main>
         <nav className="tabs" aria-label="Sections">
           <Tab icon="journey" label="Journey" on={route.tab === 'journey' || route.tab === 'recap'} onClick={() => (route.tab === 'map' ? openDay(active) : go(''))} />
           {!desktop && <Tab icon="map" label="Map" on={route.tab === 'map'} onClick={() => go('map')} />}
@@ -448,7 +452,12 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       </section>
 
       <section className="map-pane" aria-hidden={!mapVisible}>
-        <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} edit={bundle.owner ? mapEdit : undefined} />
+        {/* the map is not started until it is first shown (on a phone, not while you read the journey) */}
+        {mapShown && (
+          <Suspense fallback={<p className="map-loading">Loading the map…</p>}>
+            <MapView trip={trip} active={active} labelFor={labelFor} visible={mapVisible} tracks={tracks} focus={focus} edit={bundle.owner ? mapEdit : undefined} />
+          </Suspense>
+        )}
         <div className="map-day">
           <button type="button" aria-label="Previous day" onClick={() => step(-1)} disabled={activeIdx === 0}>
             <Icon name="back" size={20} />
@@ -475,7 +484,11 @@ export function TripApp({ bundle, base, sub }: { bundle: Bundle; base: string; s
       {sheet?.type === 'day' && <DayEditor trip={trip} mutate={commit} date={sheet.date} onClose={() => setSheet(null)} />}
       </PlanCtx.Provider>
       {sheet?.type === 'addday' && <AddDayEditor trip={trip} mutate={commit} onClose={() => setSheet(null)} />}
-      {sheet?.type === 'bookings' && <ImportBookings trip={trip} mutate={commit} onClose={() => setSheet(null)} />}
+      {sheet?.type === 'bookings' && (
+        <Suspense fallback={null}>
+          <ImportBookings trip={trip} mutate={commit} onClose={() => setSheet(null)} />
+        </Suspense>
+      )}
       {sheet?.type === 'settings' && (
         <SettingsEditor
           title={title}
@@ -565,9 +578,10 @@ function Journey({ go, editing, setEditing, openToday }: { go: (h: string) => vo
         </a>
       )}
 
-      <div className="strip" role="list" aria-label="The route, by place">
+      {/* a shortcut for eyes and fingers; the place cards below are the same links for the keyboard and screen readers */}
+      <div className="strip" aria-hidden="true">
         {runs.map((run, i) => (
-          <a key={i} role="listitem" href={`${base}/chapter/${i}`} style={{ flexGrow: run.days.length, background: themeFor(run.region).accent }} title={run.region} aria-label={run.region} />
+          <a key={i} tabIndex={-1} href={`${base}/chapter/${i}`} style={{ flexGrow: run.days.length, background: themeFor(run.region).accent }} title={run.region} />
         ))}
       </div>
 

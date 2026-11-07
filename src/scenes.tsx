@@ -75,7 +75,8 @@ export function Scene({ region, theme, className = '', photo = true, seed, src }
   }, [src]);
   const r = rng(seed ?? region);
   const own = src ? undefined : PHOTOS[region];
-  const photoSrc = src ?? (own ? photoUrl(own) : `photos/${slug(region)}.jpg`);
+  // a place with no listed photo looks for photos/<slug>.jpg, but only on a site built with a photos folder (no pointless 404s otherwise)
+  const photoSrc = src ?? (own ? photoUrl(own) : __LOCAL_PHOTOS__ ? `photos/${slug(region)}.jpg` : undefined);
   const t = theme;
   const horizon = t.kind === 'sea' || t.kind === 'lake' || t.kind === 'fjord' ? 168 : 190;
   const parts: ReactElement[] = [];
@@ -163,7 +164,7 @@ export function Scene({ region, theme, className = '', photo = true, seed, src }
         <rect width={W} height={H} fill={`url(#s${id})`} />
         {parts}
       </svg>
-      {photo && !failed && (
+      {photo && !failed && photoSrc && (
         <img
           className={hasPhoto ? 'scene-photo is-in' : 'scene-photo'}
           src={photoSrc}

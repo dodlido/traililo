@@ -1,7 +1,7 @@
 // Bundles the viewer into dist/ (app.js, app.css, index.html). Trip data is bundled in,
 // so dist/index.html opens straight from disk with no server and works offline.
 import { build } from 'esbuild';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { headTags } from './csp.mjs';
 
 // MapLibre's worker script is inlined as text so the map also works when index.html is opened from disk.
@@ -23,20 +23,38 @@ const sbKey = process.env.SUPABASE_ANON_KEY ?? '';
 const googleId = process.env.GOOGLE_CLIENT_ID ?? '';
 
 mkdirSync('dist', { recursive: true });
-await build({
+// Old builds are removed first, so files that no longer exist are not published or cached.
+rmSync('dist', { recursive: true, force: true });
+mkdirSync('dist', { recursive: true });
+const result = await build({
   entryPoints: ['src/main.tsx'],
   entryNames: 'app',
+  chunkNames: 'chunks/[name]-[hash]',
+  assetNames: 'fonts/[name]-[hash]',
   outdir: 'dist',
   bundle: true,
+  splitting: true, // the map, the film and the booking import are fetched when first used
+  metafile: true,
   plugins: [workerText],
   minify: true,
-  format: 'iife',
+  format: 'esm',
   target: 'es2020',
   jsx: 'automatic',
-  loader: { '.json': 'json', '.woff2': 'dataurl', '.png': 'dataurl', '.svg': 'dataurl' },
-  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId) },
+  loader: { '.json': 'json', '.woff2': 'file', '.woff': 'file', '.png': 'dataurl', '.svg': 'dataurl' },
+  define: { 'process.env.NODE_ENV': '"production"', __SB_URL__: JSON.stringify(sbUrl), __SB_KEY__: JSON.stringify(sbKey), __GOOGLE_CLIENT_ID__: JSON.stringify(googleId), __LOCAL_PHOTOS__: JSON.stringify(existsSync('photos')) },
   logLevel: 'info',
 });
 writeFileSync('dist/index.html', readFileSync('src/index.html', 'utf8').replace('<!--CSP-->', headTags));
 for (const f of readdirSync('public')) copyFileSync(`public/${f}`, `dist/${f}`);
+// The service worker keeps every file the app needs, so a trip opens with no signal even if the film or the map was never
+// opened on this phone. The list and the cache name come from this build, so each release replaces the old files.
+const built = Object.keys(result.metafile.outputs).map((f) => f.replace(/^dist\//, '')).filter((f) => !f.endsWith('.map'));
+const shell = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', ...built.map((f) => `./${f}`)];
+const stamp = Date.now().toString(36);
+writeFileSync(
+  'dist/sw.js',
+  readFileSync('dist/sw.js', 'utf8')
+    .replace(/\/\*SHELL\*\/\s*\[[^\]]*\]/, JSON.stringify(shell))
+    .replace(/traililo-app-[\w-]+/, `traililo-app-${stamp}`),
+);
 if (existsSync('photos')) cpSync('photos', 'dist/photos', { recursive: true });

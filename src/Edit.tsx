@@ -1,9 +1,15 @@
 // Editing, for the trip's owner. Everything opens as a bottom sheet; "Save" writes to the database straight away.
-import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useDialog } from './dialog.ts';
 import type { CommuteEntry, Day, Entry, ExperienceEntry, HikeEntry, Leg, Link, MealEntry, Point, Stay, StayType, Trip, TransportMode } from './model.ts';
 import { findStayPin, nameSpot, parseCoords, searchPlace, type Found } from './geocode.ts';
 import { BOOKING_NOTE, bookingNotes, daysBetween, guessType, parseBookingEmail, townOf } from './bookingEmail.ts';
-import { MapPick, PlanCtx, RouteMini, planAnchor, planLines, planPlaces } from './Pick.tsx';
+import { PlanCtx, planAnchor, planLines, planPlaces } from './Pick.tsx';
+
+// the map library is only fetched when an editor shows a map
+const MapPick = lazy(() => import('./PickMap.tsx').then((m) => ({ default: m.MapPick })));
+const RouteMini = lazy(() => import('./PickMap.tsx').then((m) => ({ default: m.RouteMini })));
+const mapWait = <p className="auth-note">Loading the map…</p>;
 import { routeRoad } from './roads.ts';
 import { routeFerry } from './ferry.ts';
 import { parseGpx, type ParsedTrack } from './gpx.ts';
@@ -37,6 +43,8 @@ const addDays = (iso: string, n: number) => {
 };
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useDialog(panel);
   useEffect(() => {
     const f = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', f);
@@ -45,7 +53,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   return (
     <div className="sheet-wrap" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="sheet-scrim" aria-label="Close" onClick={onClose} />
-      <div className="sheet-panel">
+      <div className="sheet-panel" ref={panel} tabIndex={-1}>
         <header>
           <h2>{title}</h2>
           <button type="button" className="round" aria-label="Close" onClick={onClose}>
@@ -157,6 +165,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
         <button type="button" className={mapOpen ? 'chip is-on' : 'chip'} aria-pressed={mapOpen} onClick={() => setMapOpen(!mapOpen)}>Map</button>
       </div>
       {(mapOpen || (plan && (always || seen || (res && res.length > 0)))) && (
+        <Suspense fallback={mapWait}>
         <MapPick
           near={near}
           current={current}
@@ -170,6 +179,7 @@ export function PlaceSearch({ onPick, current, onClear, near, keepOpen, always }
             if (!mapOpen) setRes(null);
           }}
         />
+        </Suspense>
       )}
       {current && (
         <p className="small">
@@ -624,7 +634,9 @@ export function EntryEditor({ trip, mutate, setTrack, date, id, kind, start, onC
           </div>
         );
       })}
-      <RouteMini legs={c.legs ?? []} />
+      <Suspense fallback={null}>
+        <RouteMini legs={c.legs ?? []} />
+      </Suspense>
       <button type="button" className="chip" onClick={() => up({ legs: [...(c.legs ?? []), { mode: 'drive' }] })}>+ Add a leg</button>
     </div>
   );

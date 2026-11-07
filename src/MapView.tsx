@@ -3,7 +3,6 @@
 // the route fills in up to that day and the camera flies to it.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import workerSource from 'worker-text';
 import type { Feature, FeatureCollection, LineString, MultiLineString, Point as GeoPoint } from 'geojson';
 import type { CommuteEntry, Day, Entry, HikeEntry, Point, Poi, Trip } from './model.ts';
@@ -859,7 +858,7 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
           </svg>
         </>
       )}
-      {noTiles && <p className="map-note">Basemap tiles need a connection. Your route is drawn either way.</p>}
+      {noTiles && <p className="map-note">No connection, so the map background is missing. Your route and stops still show.</p>}
     </div>
   );
 }

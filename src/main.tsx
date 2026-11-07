@@ -7,6 +7,7 @@ import { Gate } from './Gate.tsx';
 import { Home } from './Home.tsx';
 import { loadTrip, type Bundle } from './backend.ts';
 import { COVER, Scene } from './scenes.tsx';
+import 'maplibre-gl/dist/maplibre-gl.css'; // the map's own styles; kept in the main stylesheet because lazy chunks do not bring theirs
 import './styles.css';
 
 function TripLoader({ session, id, sub }: { session: Session; id: string; sub: string }) {

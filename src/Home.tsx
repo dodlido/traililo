@@ -22,7 +22,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
   }, [session]);
 
   return (
-    <div className="home">
+    <main className="home">
       <header className="home-head">
         <span className="wordmark">TraiLilo</span>
         <button type="button" className="chip" onClick={() => (leaving || !anyPending() ? signOut() : setLeaving(true))}>{leaving ? 'Sign out and lose them' : 'Sign out'}</button>
@@ -39,7 +39,7 @@ export function Home({ session, signOut }: { session: Session; signOut: () => vo
           <TripCard key={t.id} t={t} session={session} onDeleted={() => setTrips((l) => (l ? l.filter((x) => x.id !== t.id) : l))} />
         ))}
       </ul>
-    </div>
+    </main>
   );
 }
 

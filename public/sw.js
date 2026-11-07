@@ -1,7 +1,8 @@
 // The app itself is cached on first visit so it still opens with a weak signal. Map tiles are not stored.
 const APP = 'traililo-app-v5';
 const PHOTOS = 'traililo-photos-v1';
-const SHELL = ['./', './index.html', './app.js', './app.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+// the build fills this list in with every file of the app (see scripts/build.mjs)
+const SHELL = /*SHELL*/ ['./', './index.html', './app.js', './app.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

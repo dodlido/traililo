@@ -1,7 +1,7 @@
 // The trip recap: a cover, the numbers, the route, the moments worth a mention, and each place in turn with what was
 // written on a day laid over that day's pictures. Everything is worked out by recap.ts; the pictures load from the
 // owner's Google Drive once they have signed in with Google.
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import type { DrivePhoto, Point, Trip } from './model.ts';
 import { Icon } from './Icon.tsx';
 import { connectDrive, driveAvailable, driveConnected, driveLink } from './drive.ts';
@@ -9,7 +9,7 @@ import { Pic } from './Pic.tsx';
 import { computeRecap, type Moment, type Recap, type RecapChapter, type RecapDay } from './recap.ts';
 import { countryName, longDate, monthShort, dayOfMonth, shortDate, weekday } from './derive.ts';
 import { themeFor } from './scenes.tsx';
-import { RecapFilm } from './Film.tsx';
+const RecapFilm = lazy(() => import('./Film.tsx').then((m) => ({ default: m.RecapFilm })));
 import { buildFilm } from './film.ts';
 
 function Sketch({ route }: { route: Point[] }) {
@@ -223,7 +223,11 @@ export function RecapView({ trip, title, canEdit, mutate, go }: { trip: Trip; ti
           )}
         </div>
       </header>
-      {film && <RecapFilm trip={trip} title={title} upTo={r.upTo} onClose={closeFilm} />}
+      {film && (
+        <Suspense fallback={null}>
+          <RecapFilm trip={trip} title={title} upTo={r.upTo} onClose={closeFilm} />
+        </Suspense>
+      )}
 
       {r.state === 'before' ? (
         <p className="recap-empty">The recap starts on day one ({longDate(trip.startDate)}). Until then there is nothing to look back on.</p>
