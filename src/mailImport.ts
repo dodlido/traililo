@@ -33,7 +33,10 @@ export interface MailFound {
   readGyg: number;
 }
 
-const SITE = /@(?:[\w-]+\.)*(booking\.com|airbnb\.com|getyourguide\.com)\b/i;
+// the address must END at the site: booking.com.evil.net is not booking.com
+const SITE = /@(?:[\w-]+\.)*(booking\.com|airbnb\.com|getyourguide\.com)(?![\w-]|\.[\w-])/i;
+/** Which of the three sites an email's From header belongs to, or nothing. */
+export const senderSite = (from: string): string | undefined => SITE.exec(from)?.[1]?.toLowerCase();
 const BOOKINGISH = /confirm|reserv|booked|booking|itinerary|your (?:stay|trip)|modif|amend|updated|cancel/i;
 const CANCELLED_SUBJECT = /\bcancel(?:l)?ed\b|cancellation (?:confirm|complete)|\bבוטל/i;
 const CANCELLED_TOP = /(?:reservation|booking|trip|order|הזמנה)\s+(?:has\s+been\s+|was\s+|is\s+)?(?:cancel(?:l)?ed|בוטלה)|cancellation (?:confirmation|confirmed)/i;
@@ -80,7 +83,7 @@ export function triage(messages: MailMessage[], trip: { startDate: string; endDa
     const body = m.text;
     const withSubject = `${m.subject}\n${body}`;
     const cancelled = isCancellation(m.subject, body);
-    const fromSite = SITE.exec(m.from)?.[1]?.toLowerCase();
+    const fromSite = senderSite(m.from);
     const gyg = fromSite === 'getyourguide.com' || looksLikeGetYourGuide(withSubject);
 
     if (gyg) {

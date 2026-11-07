@@ -451,7 +451,8 @@ export function MapView({ trip, active, labelFor, visible, tracks, focus, edit }
           n.textContent = note;
           el.append(n);
         }
-        if (url) {
+        // only web addresses become links (never javascript: or data:)
+        if (url && /^https?:\/\//i.test(url.trim())) {
           const a = document.createElement('a');
           a.href = url;
           a.target = '_blank';

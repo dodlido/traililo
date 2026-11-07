@@ -16,6 +16,7 @@ export interface Job {
   via?: Point[];
 }
 const ROUTED = ['drive', 'taxi', 'bus', 'ferry'];
+const blur = (p: Point, places: number): Point => ({ ...p, lat: +p.lat.toFixed(places), lon: +p.lon.toFixed(places) });
 
 export function roadJobs(trip: Trip): Job[] {
   const out: Job[] = [];
@@ -29,7 +30,8 @@ export function roadJobs(trip: Trip): Job[] {
         const from = l.fromPoint ?? (own ? trip.days[i - 1]?.point : undefined);
         const to = l.toPoint ?? (own ? d.point : undefined);
         if (!from || !to || (from.lat === to.lat && from.lon === to.lon)) return;
-        out.push({ date: d.date, entry: e.id, leg: k, mode: l.mode, from, to, label: `${d.date.slice(5)}: ${l.from ?? ''} to ${l.to ?? ''}`.replace(/ to $/, '') });
+        // the owner's home is never sent to a routing service exactly: about a kilometre of slack is plenty for a road to the airport
+        out.push({ date: d.date, entry: e.id, leg: k, mode: l.mode, from: l.fromHome ? blur(from, 2) : from, to: l.toHome ? blur(to, 2) : to, label: `${d.date.slice(5)}: ${l.from ?? ''} to ${l.to ?? ''}`.replace(/ to $/, '') });
       });
     }
   });

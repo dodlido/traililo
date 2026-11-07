@@ -132,3 +132,12 @@ test('stayCosts adds each currency on its own, skips home, and counts unpriced p
   assert.equal(c.unpriced, 1);
   assert.equal(money(1240, 'USD'), 'USD 1,240');
 });
+
+test('senderSite only accepts the real domains', async () => {
+  const { senderSite } = await import('../src/mailImport.ts');
+  assert.equal(senderSite('Booking.com <noreply@mail.booking.com>'), 'booking.com');
+  assert.equal(senderSite('"Airbnb" <automated@airbnb.com>'), 'airbnb.com');
+  assert.equal(senderSite('x@booking.com.evil.net'), undefined);
+  assert.equal(senderSite('x@notbooking.com'), undefined);
+  assert.equal(senderSite('x@evil.net'), undefined);
+});

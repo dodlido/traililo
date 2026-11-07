@@ -100,7 +100,12 @@ export function adviceFor(w: DayWeather[]): string[] {
   return tips;
 }
 
+/** Where to ask the weather for. A day at the owner's home is rounded to about 10 km: the forecast does not need the street. */
 export const placePoint = (trip: Trip, dates: string[]) => {
-  for (const d of trip.days) if (dates.includes(d.date) && d.point) return d.point;
+  for (const d of trip.days) {
+    if (!dates.includes(d.date) || !d.point) continue;
+    const home = !!d.stayId && trip.stays.some((s) => s.id === d.stayId && s.type === 'home');
+    return home ? { ...d.point, lat: +d.point.lat.toFixed(1), lon: +d.point.lon.toFixed(1) } : d.point;
+  }
   return undefined;
 };
